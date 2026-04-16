@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { FileDown, Plus, Trash2, List, FileText } from 'lucide-react';
 import { getAuthorsString } from '../../utils/helpers';
 
@@ -58,7 +58,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
               </div>
               <select
                 value={sub.sectionId}
-                onChange={(e) => updateSubmission(sub.id, { sectionId: parseInt(e.target.value) })}
+                onChange={(e) => updateSubmission(sub.id, { sectionId: e.target.value })}
                 className="text-xs font-bold bg-white border border-slate-200 shadow-sm rounded-lg px-3 py-2 outline-none"
               >
                 {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

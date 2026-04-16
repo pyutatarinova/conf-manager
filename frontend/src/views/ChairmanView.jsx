@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { CheckCircle, FileDown, FileText } from 'lucide-react';
 
 import StatusBadge from '../components/ui/StatusBadge';
@@ -112,7 +112,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                   <td className="p-6">
                     <select
                       value={sub.reviewerId || ''}
-                      onChange={(e) => updateSubmission(sub.id, { reviewerId: parseInt(e.target.value) || null })}
+                      onChange={(e) => updateSubmission(sub.id, { reviewerId: e.target.value || null })}
                       className="text-xs font-bold bg-slate-100 border-none rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-400"
                     >
                       <option value="">Назначить...</option>

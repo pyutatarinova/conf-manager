@@ -4,7 +4,7 @@ import { CheckCircle, FileDown, Eye, FileText } from 'lucide-react';
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
-export default function ReviewerView({ submissions, updateSubmission }) {
+export default function ReviewerView({ submissions, updateSubmission, currentReviewerId }) {
   const [activeReviewId, setActiveReviewId] = useState(null);
   const [reviewInput, setReviewInput] = useState('');
 
@@ -15,7 +15,7 @@ export default function ReviewerView({ submissions, updateSubmission }) {
     setReviewInput('');
   };
 
-  const mySubmissions = submissions.filter((s) => s.reviewerId === 101 || s.reviewerId === null);
+  const mySubmissions = submissions.filter((s) => !currentReviewerId || s.reviewerId === currentReviewerId || s.reviewerId === null);
 
   return (
     <div className="space-y-6">

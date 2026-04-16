@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Plus, X, Upload, List, FileDown, FileText,
   MessageSquare, ChevronUp, ChevronDown, Trash2
@@ -47,7 +47,7 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
       position: fd.get('position'),
       coAuthors,
       theme: fd.get('theme'),
-      sectionId: parseInt(fd.get('sectionId')),
+      sectionId: fd.get('sectionId'),
       fileName: paperFile.name || 'doc.pdf',
       thesisFileName: thesisFile.name || 'thesis.pdf',
       status: 'reviewing',
