@@ -1,16 +1,27 @@
 import { useState } from 'react';
 import {
-  Plus, X, Upload, List, FileDown,
-  MessageSquare, ChevronUp, ChevronDown
+  Plus, X, Upload, List, FileDown, FileText,
+  MessageSquare, ChevronUp, ChevronDown, Trash2
 } from 'lucide-react';
 
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
+const ACCEPTED_FILE_TYPES = '.pdf,.docx';
+
+const isSupportedFile = (file) => {
+  if (!file || !file.name) return false;
+  const lowerName = file.name.toLowerCase();
+  return lowerName.endsWith('.pdf') || lowerName.endsWith('.docx');
+};
+
 export default function AuthorView({ activeConfId, sections, submissions, setSubmissions, updateSubmission }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coAuthors, setCoAuthors] = useState([]);
   const [expandedReview, setExpandedReview] = useState(null);
+  const [revisionUploads, setRevisionUploads] = useState({});
+  const [submitError, setSubmitError] = useState('');
+  const [revisionErrors, setRevisionErrors] = useState({});
 
   const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '', position: '' }]);
   const removeCoAuthor = (idx) => setCoAuthors(coAuthors.filter((_, i) => i !== idx));
@@ -18,6 +29,16 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
   const handleSubmit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const paperFile = fd.get('file');
+    const thesisFile = fd.get('thesisFile');
+
+    if (!isSupportedFile(paperFile) || !isSupportedFile(thesisFile)) {
+      setSubmitError('Допустимы только файлы PDF и DOCX.');
+      return;
+    }
+
+    setSubmitError('');
+
     setSubmissions([...submissions, {
       id: Date.now(),
       conferenceId: activeConfId,
@@ -27,7 +48,8 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
       coAuthors,
       theme: fd.get('theme'),
       sectionId: parseInt(fd.get('sectionId')),
-      fileName: fd.get('file').name || 'doc.pdf',
+      fileName: paperFile.name || 'doc.pdf',
+      thesisFileName: thesisFile.name || 'thesis.pdf',
       status: 'reviewing',
       revisionCount: 0,
       reviewText: '',
@@ -35,8 +57,45 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
       isBest: false,
       headApproved: false
     }]);
+
     setIsSubmitting(false);
     setCoAuthors([]);
+  };
+
+  const handleRevisionFilesChange = (submissionId, field, file) => {
+    setRevisionErrors((prev) => ({ ...prev, [submissionId]: '' }));
+    setRevisionUploads((prev) => ({
+      ...prev,
+      [submissionId]: {
+        ...prev[submissionId],
+        [field]: file || null
+      }
+    }));
+  };
+
+  const uploadRevisionFiles = (sub) => {
+    const files = revisionUploads[sub.id] || {};
+    if (!files.paper || !files.thesis) return;
+
+    if (!isSupportedFile(files.paper) || !isSupportedFile(files.thesis)) {
+      setRevisionErrors((prev) => ({ ...prev, [sub.id]: 'Допустимы только PDF и DOCX для работы и тезиса.' }));
+      return;
+    }
+
+    updateSubmission(sub.id, {
+      status: 'reviewing',
+      revisionCount: sub.revisionCount + 1,
+      fileName: files.paper.name || sub.fileName,
+      thesisFileName: files.thesis.name || sub.thesisFileName,
+      reviewText: ''
+    });
+
+    setRevisionUploads((prev) => {
+      const next = { ...prev };
+      delete next[sub.id];
+      return next;
+    });
+    setRevisionErrors((prev) => ({ ...prev, [sub.id]: '' }));
   };
 
   return (
@@ -46,11 +105,11 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Мои публикации</h1>
           <p className="text-sm text-slate-500 font-medium">Статус ваших научных работ</p>
         </div>
-        <button 
-          onClick={() => setIsSubmitting(!isSubmitting)} 
+        <button
+          onClick={() => setIsSubmitting(!isSubmitting)}
           className={`${isSubmitting ? 'bg-slate-100 text-slate-500' : 'bg-indigo-600 text-white'} px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2`}
         >
-          {isSubmitting ? <X className="w-5 h-5"/> : <Plus className="w-5 h-5"/>}
+          {isSubmitting ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
           <span className="hidden md:inline">{isSubmitting ? 'Закрыть' : 'Новая работа'}</span>
         </button>
       </div>
@@ -59,7 +118,7 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl shadow-xl border border-indigo-50 space-y-6 animate-in zoom-in-95 duration-200">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Основной Автор (ФИО)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Основной автор (ФИО)</label>
               <input required name="fullName" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Иванов И.И." />
             </div>
             <div className="space-y-1">
@@ -81,10 +140,10 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
             </div>
             {coAuthors.map((ca, i) => (
               <div key={i} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-center animate-in slide-in-from-left-2">
-                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={e=> {let n=[...coAuthors]; n[i].name=e.target.value; setCoAuthors(n)}} />
-                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={e=> {let n=[...coAuthors]; n[i].email=e.target.value; setCoAuthors(n)}} />
-                <input className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Должность" value={ca.position} onChange={e=> {let n=[...coAuthors]; n[i].position=e.target.value; setCoAuthors(n)}} />
-                <button type="button" onClick={()=>removeCoAuthor(i)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4"/></button>
+                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={(e) => { const n = [...coAuthors]; n[i].name = e.target.value; setCoAuthors(n); }} />
+                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={(e) => { const n = [...coAuthors]; n[i].email = e.target.value; setCoAuthors(n); }} />
+                <input className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Должность" value={ca.position} onChange={(e) => { const n = [...coAuthors]; n[i].position = e.target.value; setCoAuthors(n); }} />
+                <button type="button" onClick={() => removeCoAuthor(i)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
               </div>
             ))}
           </div>
@@ -94,26 +153,38 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
             <input required name="theme" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Введите название..." />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select required name="sectionId" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none bg-white">
               <option value="">Выберите секцию</option>
-              {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <input required name="file" type="file" className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm" />
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Файл работы (PDF/DOCX)</label>
+              <input required name="file" type="file" accept={ACCEPTED_FILE_TYPES} className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Файл тезиса (PDF/DOCX)</label>
+              <input required name="thesisFile" type="file" accept={ACCEPTED_FILE_TYPES} className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm" />
+            </div>
           </div>
-          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-lg">Отправить на рецензию</button>
+
+          {submitError && <p className="text-xs text-red-500 font-semibold">{submitError}</p>}
+
+          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-lg">
+            Отправить на рецензию
+          </button>
         </form>
       )}
 
       <div className="space-y-4">
-        {submissions.map(sub => (
+        {submissions.map((sub) => (
           <div key={sub.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
             <div className="p-6 md:p-8 space-y-4">
               <div className="flex items-center gap-3">
                 <StatusBadge status={sub.status} />
                 <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Версия {sub.revisionCount + 1}</span>
               </div>
-              
+
               <div className="space-y-2">
                 <h3 className="text-xl font-bold text-slate-900 leading-tight break-words">{sub.theme}</h3>
                 <div className="text-sm text-slate-600 font-medium break-words">
@@ -122,24 +193,25 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
               </div>
 
               <div className="flex flex-wrap items-center gap-4 text-[10px] font-black uppercase tracking-widest text-indigo-400">
-                 <div className="flex items-center gap-1.5"><List className="w-3.5 h-3.5" /> {sections.find(s=>s.id === sub.sectionId)?.name}</div>
-                 <div className="flex items-center gap-1.5"><FileDown className="w-3.5 h-3.5" /> {sub.fileName}</div>
+                <div className="flex items-center gap-1.5"><List className="w-3.5 h-3.5" /> {sections.find((s) => s.id === sub.sectionId)?.name}</div>
+                <div className="flex items-center gap-1.5"><FileDown className="w-3.5 h-3.5" /> {sub.fileName}</div>
+                <div className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> {sub.thesisFileName || 'thesis.pdf'}</div>
               </div>
 
               {sub.reviewText && (
                 <div className="pt-2">
-                  <button 
+                  <button
                     onClick={() => setExpandedReview(expandedReview === sub.id ? null : sub.id)}
                     className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all border ${expandedReview === sub.id ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}
                   >
                     <span className="flex items-center gap-2 font-bold text-sm text-slate-700">
-                      <MessageSquare className="w-4 h-4 text-amber-500" /> 
-                      Комментарий рецензента 
+                      <MessageSquare className="w-4 h-4 text-amber-500" />
+                      Комментарий рецензента
                       {expandedReview !== sub.id && <span className="text-[10px] font-black opacity-50 uppercase">(Нажмите, чтобы развернуть)</span>}
                     </span>
                     {expandedReview === sub.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
-                  
+
                   {expandedReview === sub.id && (
                     <div className="p-5 mt-2 bg-amber-50 rounded-2xl border border-amber-100 animate-in slide-in-from-top-2 duration-200">
                       <p className="text-sm text-amber-900 leading-relaxed break-words whitespace-pre-wrap">
@@ -153,21 +225,51 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
 
             {sub.status === 'needs_revision' && (
               <div className="px-6 pb-6 pt-0">
-                <button 
-                  onClick={() => updateSubmission(sub.id, { status: 'reviewing', revisionCount: sub.revisionCount + 1 })}
-                  className="w-full bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-                >
-                  <Upload className="w-4 h-4" /> Загрузить исправленную версию
-                </button>
+                {sub.revisionCount >= 1 ? (
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400 text-center py-2">
+                    Лимит доработки исчерпан, текущая версия считается финальной
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленная работа (PDF/DOCX)</label>
+                        <input
+                          type="file"
+                          accept={ACCEPTED_FILE_TYPES}
+                          onChange={(e) => handleRevisionFilesChange(sub.id, 'paper', e.target.files?.[0])}
+                          className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленный тезис (PDF/DOCX)</label>
+                        <input
+                          type="file"
+                          accept={ACCEPTED_FILE_TYPES}
+                          onChange={(e) => handleRevisionFilesChange(sub.id, 'thesis', e.target.files?.[0])}
+                          className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    {revisionErrors[sub.id] && <p className="text-xs text-red-500 font-semibold">{revisionErrors[sub.id]}</p>}
+                    <button
+                      onClick={() => uploadRevisionFiles(sub)}
+                      disabled={!revisionUploads[sub.id]?.paper || !revisionUploads[sub.id]?.thesis}
+                      className="w-full bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
+                    >
+                      <Upload className="w-4 h-4" /> Загрузить исправленную версию и тезис
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         ))}
-        
+
         {submissions.length === 0 && !isSubmitting && (
-           <div className="text-center py-20">
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">У вас пока нет поданных работ</p>
-           </div>
+          <div className="text-center py-20">
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">У вас пока нет поданных работ</p>
+          </div>
         )}
       </div>
     </div>

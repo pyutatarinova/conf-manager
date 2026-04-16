@@ -1,5 +1,5 @@
-import React, { useState} from 'react';
-import { CheckCircle, FileDown, Eye, } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle, FileDown, Eye, FileText } from 'lucide-react';
 
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
@@ -7,14 +7,15 @@ import { getAuthorsString } from '../utils/helpers';
 export default function ReviewerView({ submissions, updateSubmission }) {
   const [activeReviewId, setActiveReviewId] = useState(null);
   const [reviewInput, setReviewInput] = useState('');
-  
-  const handleSave = (id, status) => {
-    updateSubmission(id, { status, reviewText: reviewInput });
+
+  const handleSave = (sub) => {
+    const nextStatus = sub.status === 'needs_revision' && sub.revisionCount >= 1 ? 'reviewing' : sub.status;
+    updateSubmission(sub.id, { status: nextStatus, reviewText: reviewInput });
     setActiveReviewId(null);
     setReviewInput('');
   };
 
-  const mySubmissions = submissions.filter(s => s.reviewerId === 101 || s.reviewerId === null); 
+  const mySubmissions = submissions.filter((s) => s.reviewerId === 101 || s.reviewerId === null);
 
   return (
     <div className="space-y-6">
@@ -26,11 +27,11 @@ export default function ReviewerView({ submissions, updateSubmission }) {
       </div>
 
       <div className="space-y-4">
-        {mySubmissions.map(sub => {
-          // Работа считается оцененной, если ее статус больше не 'reviewing'
+        {mySubmissions.map((sub) => {
           const isDone = sub.status !== 'reviewing';
           const currentVersion = sub.revisionCount + 1;
-          
+          const canRequestRevision = sub.revisionCount < 1;
+
           return (
             <div key={sub.id} className={`bg-white rounded-[2rem] border p-6 transition-all ${activeReviewId === sub.id ? 'border-indigo-500 ring-4 ring-indigo-50' : 'border-slate-100'}`}>
               <div className="flex flex-col md:flex-row justify-between items-start gap-4">
@@ -51,29 +52,35 @@ export default function ReviewerView({ submissions, updateSubmission }) {
                     {getAuthorsString(sub)}
                   </div>
                 </div>
-                
+
                 <div className="flex gap-2">
-                  <button 
-                    className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors" 
+                  <button
+                    className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
                     title={`Скачать файл: ${sub.fileName}`}
                   >
-                    <FileDown className="w-5 h-5"/>
+                    <FileDown className="w-5 h-5" />
+                  </button>
+                  <button
+                    className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
+                    title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                  >
+                    <FileText className="w-5 h-5" />
                   </button>
                   {!isDone && activeReviewId !== sub.id && (
-                    <button 
-                      onClick={() => { setActiveReviewId(sub.id); setReviewInput(sub.reviewText || ''); }} 
+                    <button
+                      onClick={() => { setActiveReviewId(sub.id); setReviewInput(sub.reviewText || ''); }}
                       className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-shadow shadow-md whitespace-nowrap"
                     >
                       Оценить
                     </button>
                   )}
                   {isDone && (
-                    <button 
-                      onClick={() => { setActiveReviewId(activeReviewId === sub.id ? null : sub.id); setReviewInput(sub.reviewText || ''); }} 
+                    <button
+                      onClick={() => { setActiveReviewId(activeReviewId === sub.id ? null : sub.id); setReviewInput(sub.reviewText || ''); }}
                       className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
                       title="Просмотр оценки"
                     >
-                      <Eye className="w-5 h-5"/>
+                      <Eye className="w-5 h-5" />
                     </button>
                   )}
                 </div>
@@ -84,41 +91,46 @@ export default function ReviewerView({ submissions, updateSubmission }) {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Вердикт по версии №{currentVersion}</label>
-                      <select 
+                      <select
                         defaultValue={sub.status}
-                        onChange={(e) => updateSubmission(sub.id, { status: e.target.value })} 
+                        onChange={(e) => updateSubmission(sub.id, { status: e.target.value })}
                         className="w-full border border-slate-200 p-3 rounded-xl outline-none bg-white font-bold text-slate-700"
                       >
                         <option value="reviewing">Оставить на рассмотрении</option>
                         <option value="accepted_oral">Принять как устный доклад</option>
                         <option value="accepted_poster">Принять как постерный доклад</option>
-                        <option value="needs_revision">Отправить на доработку (новые правки)</option>
+                        {canRequestRevision && <option value="needs_revision">Отправить на доработку (только 1 раз)</option>}
                         <option value="rejected">Отклонить работу</option>
                       </select>
                     </div>
                   </div>
+
+                  {!canRequestRevision && (
+                    <p className="text-xs text-slate-500 font-semibold">Повторная доработка недоступна: следующая версия считается финальной.</p>
+                  )}
+
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Текст рецензии для авторов</label>
-                    <textarea 
+                    <textarea
                       value={reviewInput}
                       onChange={(e) => setReviewInput(e.target.value)}
-                      placeholder="Укажите замечания или причину отказа..." 
-                      className="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[120px]" 
+                      placeholder="Укажите замечания или причину отказа..."
+                      className="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[120px]"
                     ></textarea>
                   </div>
                   <div className="flex gap-3 justify-end items-center pt-2">
                     <button onClick={() => setActiveReviewId(null)} className="font-bold text-slate-400 px-4 hover:text-slate-600">Отмена</button>
-                    <button onClick={() => handleSave(sub.id, sub.status)} className="bg-slate-900 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black">Сохранить</button>
+                    <button onClick={() => handleSave(sub)} className="bg-slate-900 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black">Сохранить</button>
                   </div>
                 </div>
               )}
             </div>
-          )
+          );
         })}
         {mySubmissions.length === 0 && (
-           <div className="text-center py-20">
-             <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Нет работ для рецензирования</p>
-           </div>
+          <div className="text-center py-20">
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Нет работ для рецензирования</p>
+          </div>
         )}
       </div>
     </div>

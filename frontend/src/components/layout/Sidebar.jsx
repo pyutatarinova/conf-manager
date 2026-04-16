@@ -1,7 +1,7 @@
-import { LogOut, FileText, Info, Calendar, Users, List, MessageSquare } from 'lucide-react';
+import { LogOut, FileText, Info, Calendar, Users, List, MessageSquare, FolderOpen } from 'lucide-react';
 import { ROLES } from '../../constants';
 
-export default function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
+export default function Sidebar({ role, activeTab, setActiveTab, onLogout, onBackToConferenceSelect }) {
   const options = {
     [ROLES.AUTHOR]: [
       { id: 'main', icon: FileText, label: 'Мои работы' },
@@ -27,29 +27,41 @@ export default function Sidebar({ role, activeTab, setActiveTab, onLogout }) {
   };
 
   return (
-    <aside className="w-20 md:w-64 bg-white border-r border-slate-200 p-4 flex flex-col shadow-[1px_0_0_rgba(0,0,0,0.05)] transition-all">
+    <aside className="w-20 md:w-64 bg-white border-r border-slate-200 p-4 flex flex-col shadow-[1px_0_0_rgba(0,0,0,0.05)] transition-all overflow-x-hidden">
       <div className="mb-10 px-4 hidden md:block">
         <p className="text-2xl font-black text-indigo-600 tracking-tighter">Event<span className="text-slate-900">Flow</span></p>
       </div>
-      <nav className="flex-1 space-y-1.5 overflow-y-auto">
-        {options[role].map(item => (
-          <button 
-            key={item.id} 
-            onClick={() => setActiveTab(item.id)} 
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-[1.02]' : 'text-slate-400 hover:bg-slate-50 hover:text-indigo-600'}`}
+
+      <nav className="flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden">
+        {options[role].map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50 hover:text-indigo-600'}`}
           >
-            <item.icon className="w-5 h-5 flex-shrink-0" /> 
+            <item.icon className="w-5 h-5 flex-shrink-0" />
             <span className="hidden md:block truncate text-left">{item.label}</span>
           </button>
         ))}
       </nav>
-      <button 
-        onClick={onLogout} 
-        className="mt-auto flex items-center gap-3 px-4 py-4 text-sm text-slate-400 hover:text-red-500 font-bold transition-colors border-t border-slate-50 pt-6"
-      >
-        <LogOut className="w-5 h-5"/> 
-        <span className="hidden md:block">Выйти</span>
-      </button>
+
+      <div className="mt-auto border-t border-slate-50 pt-4 space-y-1">
+        <button
+          onClick={onBackToConferenceSelect}
+          className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm text-slate-400 hover:text-indigo-600 hover:bg-slate-50 font-bold transition-colors"
+        >
+          <FolderOpen className="w-5 h-5" />
+          <span className="hidden md:block">К конференциям</span>
+        </button>
+
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm text-slate-400 hover:text-red-500 hover:bg-slate-50 font-bold transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="hidden md:block">Выйти</span>
+        </button>
+      </div>
     </aside>
   );
 }
