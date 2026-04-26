@@ -1,8 +1,7 @@
-from sqlalchemy import Column, String, Text, TIMESTAMP
+from sqlalchemy import Column, String, Text, TIMESTAMP, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
-
 from database import Base
 
 class User(Base):
@@ -14,4 +13,5 @@ class User(Base):
     password_hash = Column(Text, nullable=False)
     affiliation = Column(Text)
     bio = Column(Text)
+    is_superadmin = Column(Boolean, default=False, nullable=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)

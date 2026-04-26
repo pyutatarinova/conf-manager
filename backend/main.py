@@ -4,13 +4,22 @@ from sqlalchemy import text
 
 # модели (важно чтобы импортировались для create_all)
 from models.user import User
-from models.role import Role
-from models.user_role import UserRole
+from models.conference import Conference
+from models.conference_role import ConferenceRole
+from models.invite import Invite
+from api.conferences import router as conferences_router
+from auth.router import router as auth_router
+from api.dev import router as dev_router
+
 
 app = FastAPI(
     title="Conference Platform API",
     version="1.0.0"
 )
+
+app.include_router(auth_router)
+app.include_router(conferences_router, prefix="/conferences", tags=["conferences"])
+app.include_router(dev_router, prefix="/dev", tags=["dev"])
 
 # -------------------------
 # BASIC ROUTES

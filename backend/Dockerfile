@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir \
     -i https://pypi.org/simple \
     --trusted-host pypi.org \
     --trusted-host files.pythonhosted.org \
-    fastapi uvicorn sqlalchemy psycopg2-binary python-jose passlib[bcrypt]
+    -r requirements.txt
 
 COPY . .
 
