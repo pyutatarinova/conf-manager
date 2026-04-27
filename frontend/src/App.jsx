@@ -70,7 +70,9 @@ export default function App() {
       title: c.title,
       description: c.description,
       startDate: toDateInput(c.created_at),
-      endDate: toDateInput(c.submission_deadline)
+      endDate: toDateInput(c.submission_deadline),
+      isPublic: c.is_public ?? true,
+      isSubmit: c.is_submit ?? true
     })),
     [conferencesTable]
   );
@@ -102,7 +104,7 @@ export default function App() {
           email: user.email,
           role: r.role,
           position: user.affiliation || '',
-          sectionId: ''
+          sectionId: r.section_id || ''
         };
       })
       .filter(Boolean);
@@ -128,11 +130,10 @@ export default function App() {
         const thesisFile = filesTable.find((f) => f.id === thesisLink?.file_id);
 
         const latestReview = reviewsTable
-          .filter((r) => r.submission_id === s.id && r.decision !== 'program_approved')
+          .filter((r) => r.submission_id === s.id && r.revision_round === s.revision_count)
           .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))[0];
 
         const assignment = reviewAssignmentsTable.find((a) => a.submission_id === s.id);
-        const headApproved = reviewsTable.some((r) => r.submission_id === s.id && r.decision === 'program_approved');
 
         return {
           id: s.id,
@@ -150,26 +151,32 @@ export default function App() {
           reviewText: latestReview?.comments || '',
           reviewerId: assignment?.reviewer_id || null,
           isBest: Boolean(s.is_best),
-          headApproved
+          reviewerLocked: s.reviewer_locked_round === s.revision_count,
+          chairmanLocked: s.chairman_locked_round === s.revision_count,
+          reviewerLockedRound: s.reviewer_locked_round ?? null,
+          chairmanLockedRound: s.chairman_locked_round ?? null
         };
       });
   }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, reviewAssignmentsTable, activeConfId]);
 
   const currentReviewerId = curUsers.find((u) => u.role === 'reviewer')?.id || null;
+  const currentChairmanId = curUsers.find((u) => u.role === 'chairman')?.id || null;
 
   const setConferences = (nextConferences) => {
     setConferencesTable((prev) => prev.map((conf) => {
       const next = nextConferences.find((c) => c.id === conf.id);
       if (!next) return conf;
-      return {
-        ...conf,
-        title: next.title,
-        description: next.description,
-        created_at: toIsoDate(next.startDate) || conf.created_at,
-        submission_deadline: toIsoDate(next.endDate) || conf.submission_deadline
-      };
-    }));
-  };
+        return {
+          ...conf,
+          title: next.title,
+          description: next.description,
+          created_at: toIsoDate(next.startDate) || conf.created_at,
+          submission_deadline: toIsoDate(next.endDate) || conf.submission_deadline,
+          is_public: next.isPublic ?? conf.is_public ?? true,
+          is_submit: next.isSubmit ?? conf.is_submit ?? true
+        };
+      }));
+    };
 
   const setSections = (nextSectionsLegacy) => {
     setSectionsTable((prev) => {
@@ -208,7 +215,13 @@ export default function App() {
           affiliation: u.position || nextUsers[idx].affiliation,
           bio: nextUsers[idx].bio || ''
         };
-        nextRoles.push({ id: uuid(), user_id: existingUser.id, conference_id: activeConfId, role: u.role });
+        nextRoles.push({
+          id: uuid(),
+          user_id: existingUser.id,
+          conference_id: activeConfId,
+          role: u.role,
+          section_id: u.role === 'chairman' ? (u.sectionId || null) : null
+        });
       } else {
         nextUsers.push({
           id: userId,
@@ -219,7 +232,13 @@ export default function App() {
           bio: '',
           created_at: nowIso()
         });
-        nextRoles.push({ id: uuid(), user_id: userId, conference_id: activeConfId, role: u.role });
+        nextRoles.push({
+          id: uuid(),
+          user_id: userId,
+          conference_id: activeConfId,
+          role: u.role,
+          section_id: u.role === 'chairman' ? (u.sectionId || null) : null
+        });
       }
     });
 
@@ -294,6 +313,8 @@ export default function App() {
       status: added.status,
       current_file_id: paperFileId,
       revision_count: 0,
+      reviewer_locked_round: null,
+      chairman_locked_round: null,
       is_best: false,
       created_at: createdAt,
       updated_at: createdAt
@@ -335,19 +356,39 @@ export default function App() {
     setSubmissionAuthorsTable((prev) => [...prev, ...authorRows]);
   };
 
-  const updateSubmission = (id, updates) => {
+  const updateSubmission = (id, updates, actorRole = 'admin') => {
     const currentSubmission = submissionsTable.find((s) => s.id === id);
     if (!currentSubmission) return;
 
+    const isReviewerLockedForRound = currentSubmission.reviewer_locked_round === currentSubmission.revision_count;
+    const isChairmanLockedForRound = currentSubmission.chairman_locked_round === currentSubmission.revision_count;
+
     let nextSubmission = { ...currentSubmission };
 
-    if (updates.sectionId !== undefined) nextSubmission.section_id = updates.sectionId;
-    if (updates.status !== undefined) nextSubmission.status = updates.status;
-    if (updates.revisionCount !== undefined) nextSubmission.revision_count = updates.revisionCount;
-    if (updates.isBest !== undefined) nextSubmission.is_best = updates.isBest;
+    if (updates.sectionId !== undefined) {
+      if (actorRole === 'admin') nextSubmission.section_id = updates.sectionId;
+    }
+
+    if (updates.status !== undefined) {
+      const canEditStatus =
+        actorRole === 'admin'
+        || (actorRole === 'reviewer' && !isReviewerLockedForRound && !isChairmanLockedForRound)
+        || (actorRole === 'chairman' && !isChairmanLockedForRound);
+
+      if (canEditStatus) nextSubmission.status = updates.status;
+    }
+
+    if (updates.revisionCount !== undefined) {
+      if (actorRole === 'author' || actorRole === 'admin') nextSubmission.revision_count = updates.revisionCount;
+    }
+
+    if (updates.isBest !== undefined) {
+      if (actorRole === 'admin') nextSubmission.is_best = updates.isBest;
+    }
     nextSubmission.updated_at = nowIso();
 
     if (updates.fileName || updates.thesisFileName) {
+      if (actorRole !== 'author' && actorRole !== 'admin') return;
       const primaryAuthor = submissionAuthorsTable
         .filter((a) => a.submission_id === id)
         .sort((a, b) => a.author_order - b.author_order)[0];
@@ -393,6 +434,8 @@ export default function App() {
     }
 
     if (updates.reviewerId !== undefined) {
+      if (actorRole !== 'chairman' && actorRole !== 'admin') return;
+      if (actorRole === 'chairman' && isChairmanLockedForRound) return;
       setReviewAssignmentsTable((prev) => {
         const without = prev.filter((a) => a.submission_id !== id);
         if (!updates.reviewerId) return without;
@@ -411,47 +454,40 @@ export default function App() {
     }
 
     if (updates.reviewText !== undefined) {
-      const assignedReviewer = updates.reviewerId || reviewAssignmentsTable.find((a) => a.submission_id === id)?.reviewer_id;
-      if (assignedReviewer) {
-        setReviewsTable((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            submission_id: id,
-            reviewer_id: assignedReviewer,
-            decision: updates.status || nextSubmission.status,
-            comments: updates.reviewText || '',
-            file_id: nextSubmission.current_file_id,
-            revision_round: nextSubmission.revision_count,
-            created_at: nowIso(),
-            updated_at: nowIso()
-          }
-        ]);
-      }
-    }
+      const canEditReview =
+        actorRole === 'admin'
+        || (actorRole === 'reviewer' && !isReviewerLockedForRound && !isChairmanLockedForRound)
+        || (actorRole === 'chairman' && !isChairmanLockedForRound);
 
-    if (updates.headApproved === true) {
-      const chairmanUser = conferenceRolesTable.find((r) => r.conference_id === currentSubmission.conference_id && r.role === 'chairman')?.user_id;
-      if (chairmanUser) {
-        setReviewsTable((prev) => {
-          const exists = prev.some((r) => r.submission_id === id && r.decision === 'program_approved');
-          if (exists) return prev;
-          return [
+      if (actorRole === 'author') {
+        // Автор не может менять рецензию.
+      } else if (canEditReview) {
+        const assignedReviewer = updates.reviewerId || reviewAssignmentsTable.find((a) => a.submission_id === id)?.reviewer_id;
+        if (assignedReviewer) {
+          setReviewsTable((prev) => [
             ...prev,
             {
               id: uuid(),
               submission_id: id,
-              reviewer_id: chairmanUser,
-              decision: 'program_approved',
-              comments: '',
+              reviewer_id: assignedReviewer,
+              decision: updates.status || nextSubmission.status,
+              comments: updates.reviewText || '',
               file_id: nextSubmission.current_file_id,
               revision_round: nextSubmission.revision_count,
               created_at: nowIso(),
               updated_at: nowIso()
             }
-          ];
-        });
+          ]);
+        }
       }
+    }
+
+    if (actorRole === 'reviewer' && updates.finalizeReview === true) {
+      nextSubmission.reviewer_locked_round = nextSubmission.revision_count;
+    }
+
+    if (actorRole === 'chairman' && updates.finalizeChairman === true) {
+      nextSubmission.chairman_locked_round = nextSubmission.revision_count;
     }
 
     setSubmissionsTable((prev) => prev.map((s) => (s.id === id ? nextSubmission : s)));
@@ -486,14 +522,16 @@ export default function App() {
             const newId = uuid();
             setConferencesTable((prev) => [
               ...prev,
-              {
-                id: newId,
-                title,
-                description: '',
-                created_at: toIsoDate(startDate) || nowIso(),
-                submission_deadline: toIsoDate(endDate) || nowIso()
-              }
-            ]);
+                {
+                  id: newId,
+                  title,
+                  description: '',
+                  is_public: false,
+                  is_submit: true,
+                  created_at: toIsoDate(startDate) || nowIso(),
+                  submission_deadline: toIsoDate(endDate) || nowIso()
+                }
+              ]);
             setActiveConfId(newId);
             setIsCreateConfOpen(false);
             setIsConferenceSelected(true);
@@ -543,17 +581,41 @@ export default function App() {
         />
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-5xl mx-auto">
-            {activeTab === 'main' && currentRole === ROLES.AUTHOR && <AuthorView activeConfId={activeConfId} sections={curSections} submissions={curSubmissions} updateSubmission={updateSubmission} setSubmissions={setSubmissions} />}
-            {activeTab === 'main' && currentRole === ROLES.REVIEWER && <ReviewerView submissions={curSubmissions} updateSubmission={updateSubmission} currentReviewerId={currentReviewerId} />}
-            {activeTab === 'main' && currentRole === ROLES.CHAIRMAN && <ChairmanView submissions={curSubmissions} updateSubmission={updateSubmission} sections={curSections} setSections={setSections} users={curUsers} />}
+            {activeTab === 'main' && currentRole === ROLES.AUTHOR && (
+              <AuthorView
+                activeConfId={activeConfId}
+                isSubmitOpen={activeConf?.isSubmit ?? true}
+                sections={curSections}
+                submissions={curSubmissions}
+                updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.AUTHOR)}
+                setSubmissions={setSubmissions}
+              />
+            )}
+            {activeTab === 'main' && currentRole === ROLES.REVIEWER && (
+              <ReviewerView
+                submissions={curSubmissions}
+                updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.REVIEWER)}
+                currentReviewerId={currentReviewerId}
+              />
+            )}
+            {activeTab === 'main' && currentRole === ROLES.CHAIRMAN && (
+              <ChairmanView
+                submissions={curSubmissions}
+                updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.CHAIRMAN)}
+                sections={curSections}
+                setSections={setSections}
+                users={curUsers}
+                chairmanId={currentChairmanId}
+              />
+            )}
 
             {activeTab === 'info' && currentRole === ROLES.ADMIN && <AdminInfoView conference={activeConf} conferences={conferences} setConferences={setConferences} />}
-            {activeTab === 'info' && currentRole !== ROLES.ADMIN && <PublicInfoView conference={activeConf} sections={curSections} />}
+            {activeTab === 'info' && currentRole !== ROLES.ADMIN && <PublicInfoView conference={activeConf} sections={curSections} users={curUsers} />}
 
             {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} />}
 
-            {activeTab === 'users' && currentRole === ROLES.ADMIN && <AdminUsersView activeConfId={activeConfId} users={curUsers} setUsers={setUsers} submissions={curSubmissions} />}
-            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} updateSubmission={updateSubmission} />}
+            {activeTab === 'users' && currentRole === ROLES.ADMIN && <AdminUsersView activeConfId={activeConfId} users={curUsers} setUsers={setUsers} submissions={curSubmissions} sections={curSections} />}
+            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}
           </div>
         </main>
       </div>
