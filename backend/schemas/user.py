@@ -9,3 +9,8 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+class InviteRegisterRequest(BaseModel):
+    name: str
+    password: str
+    token: str

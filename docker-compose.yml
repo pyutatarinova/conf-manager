@@ -43,6 +43,18 @@ services:
       - minio
       - redis
 
+frontend:
+    build: ./frontend
+    container_name: conf_frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
 volumes:
   postgres_data:
   minio_data:

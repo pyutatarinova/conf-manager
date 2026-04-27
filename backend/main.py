@@ -7,9 +7,16 @@ from models.user import User
 from models.conference import Conference
 from models.conference_role import ConferenceRole
 from models.invite import Invite
+from models.file import File
+from models.section import Section
+from models.submission import Submission
+from models.submission_file import SubmissionFile
 from api.conferences import router as conferences_router
-from auth.router import router as auth_router
+from api.files import router as files_router
 from api.dev import router as dev_router
+from auth.router import router as auth_router
+from api.submissions import router as submissions_router
+
 
 
 app = FastAPI(
@@ -20,6 +27,8 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(conferences_router, prefix="/conferences", tags=["conferences"])
 app.include_router(dev_router, prefix="/dev", tags=["dev"])
+app.include_router(files_router, prefix="/files", tags=["files"])
+app.include_router(submissions_router, prefix="/submissions", tags=["submissions"])
 
 # -------------------------
 # BASIC ROUTES

@@ -2,8 +2,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from schemas.user import UserCreate, UserLogin
-from auth.service import register_user, login_user
+from schemas.user import UserCreate, UserLogin, InviteRegisterRequest
+from auth.service import register_user, login_user, register_by_invite
 from auth.dependencies import get_current_user
 from models.user import User
 
@@ -36,3 +36,20 @@ def get_me(current_user: User = Depends(get_current_user)):
         "affiliation": current_user.affiliation,
         "bio": current_user.bio
     }
+
+@router.post("/register-invite")
+def register_invite(data: InviteRegisterRequest, db: Session = Depends(get_db)):
+    try:
+        user, token = register_by_invite(db, data)
+
+        return {
+            "id": str(user.id),
+            "email": user.email,
+            "access_token": token
+        }
+
+    except HTTPException as e:
+        raise e
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
