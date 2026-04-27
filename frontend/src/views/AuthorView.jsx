@@ -15,7 +15,7 @@ const isSupportedFile = (file) => {
   return lowerName.endsWith('.pdf') || lowerName.endsWith('.docx');
 };
 
-export default function AuthorView({ activeConfId, sections, submissions, setSubmissions, updateSubmission }) {
+export default function AuthorView({ activeConfId, isSubmitOpen, sections, submissions, setSubmissions, updateSubmission }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coAuthors, setCoAuthors] = useState([]);
   const [expandedReview, setExpandedReview] = useState(null);
@@ -28,6 +28,10 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!isSubmitOpen) {
+      setSubmitError('Приём заявок закрыт. Вы можете просматривать ранее поданные работы.');
+      return;
+    }
     const fd = new FormData(e.target);
     const paperFile = fd.get('file');
     const thesisFile = fd.get('thesisFile');
@@ -54,8 +58,7 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
       revisionCount: 0,
       reviewText: '',
       reviewerId: null,
-      isBest: false,
-      headApproved: false
+      isBest: false
     }]);
 
     setIsSubmitting(false);
@@ -106,13 +109,26 @@ export default function AuthorView({ activeConfId, sections, submissions, setSub
           <p className="text-sm text-slate-500 font-medium">Статус ваших научных работ</p>
         </div>
         <button
-          onClick={() => setIsSubmitting(!isSubmitting)}
-          className={`${isSubmitting ? 'bg-slate-100 text-slate-500' : 'bg-indigo-600 text-white'} px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2`}
+          disabled={!isSubmitOpen}
+          onClick={() => {
+            if (!isSubmitOpen) {
+              setSubmitError('Приём заявок закрыт. Вы можете просматривать ранее поданные работы.');
+              return;
+            }
+            setIsSubmitting(!isSubmitting);
+          }}
+          className={`${isSubmitting ? 'bg-slate-100 text-slate-500' : 'bg-indigo-600 text-white'} px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {isSubmitting ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
           <span className="hidden md:inline">{isSubmitting ? 'Закрыть' : 'Новая работа'}</span>
         </button>
       </div>
+
+      {!isSubmitOpen && (
+        <div className="bg-amber-50 border border-amber-100 text-amber-900 p-4 rounded-2xl text-sm font-semibold">
+          Приём заявок в этой конференции закрыт: новые работы подать нельзя.
+        </div>
+      )}
 
       {isSubmitting && (
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl shadow-xl border border-indigo-50 space-y-6 animate-in zoom-in-95 duration-200">

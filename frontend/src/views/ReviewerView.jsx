@@ -7,12 +7,15 @@ import { getAuthorsString } from '../utils/helpers';
 export default function ReviewerView({ submissions, updateSubmission, currentReviewerId }) {
   const [activeReviewId, setActiveReviewId] = useState(null);
   const [reviewInput, setReviewInput] = useState('');
+  const [statusInput, setStatusInput] = useState('reviewing');
 
   const handleSave = (sub) => {
-    const nextStatus = sub.status === 'needs_revision' && sub.revisionCount >= 1 ? 'reviewing' : sub.status;
-    updateSubmission(sub.id, { status: nextStatus, reviewText: reviewInput });
+    if (sub.reviewerLocked || sub.chairmanLocked) return;
+    const nextStatus = statusInput === 'needs_revision' && sub.revisionCount >= 1 ? 'reviewing' : statusInput;
+    updateSubmission(sub.id, { status: nextStatus, reviewText: reviewInput, finalizeReview: nextStatus !== 'reviewing' });
     setActiveReviewId(null);
     setReviewInput('');
+    setStatusInput('reviewing');
   };
 
   const mySubmissions = submissions.filter((s) => !currentReviewerId || s.reviewerId === currentReviewerId || s.reviewerId === null);
@@ -28,7 +31,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
 
       <div className="space-y-4">
         {mySubmissions.map((sub) => {
-          const isDone = sub.status !== 'reviewing';
+          const isLocked = Boolean(sub.reviewerLocked || sub.chairmanLocked);
           const currentVersion = sub.revisionCount + 1;
           const canRequestRevision = sub.revisionCount < 1;
 
@@ -41,7 +44,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                     <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-black text-slate-500 rounded uppercase">
                       Версия №{currentVersion}
                     </span>
-                    {isDone && (
+                    {isLocked && (
                       <span className="flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
                         <CheckCircle className="w-3 h-3" /> Оценено
                       </span>
@@ -55,29 +58,39 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
 
                 <div className="flex gap-2">
                   <button
-                    className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
+                    className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                     title={`Скачать файл: ${sub.fileName}`}
                   >
                     <FileDown className="w-5 h-5" />
+                    <span className="text-xs font-bold">Работа</span>
                   </button>
                   <button
-                    className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
+                    className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                     title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
                   >
                     <FileText className="w-5 h-5" />
+                    <span className="text-xs font-bold">Тезисы</span>
                   </button>
-                  {!isDone && activeReviewId !== sub.id && (
+                  {!isLocked && activeReviewId !== sub.id && (
                     <button
-                      onClick={() => { setActiveReviewId(sub.id); setReviewInput(sub.reviewText || ''); }}
+                      onClick={() => {
+                        setActiveReviewId(sub.id);
+                        setReviewInput(sub.reviewText || '');
+                        setStatusInput(sub.status || 'reviewing');
+                      }}
                       className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-shadow shadow-md whitespace-nowrap"
                     >
                       Оценить
                     </button>
                   )}
-                  {isDone && (
+                  {isLocked && (
                     <button
-                      onClick={() => { setActiveReviewId(activeReviewId === sub.id ? null : sub.id); setReviewInput(sub.reviewText || ''); }}
-                      className="text-slate-400 hover:text-indigo-600 p-2.5 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors"
+                      onClick={() => {
+                        setActiveReviewId(activeReviewId === sub.id ? null : sub.id);
+                        setReviewInput(sub.reviewText || '');
+                        setStatusInput(sub.status || 'reviewing');
+                      }}
+                      className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                       title="Просмотр оценки"
                     >
                       <Eye className="w-5 h-5" />
@@ -92,9 +105,10 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Вердикт по версии №{currentVersion}</label>
                       <select
-                        defaultValue={sub.status}
-                        onChange={(e) => updateSubmission(sub.id, { status: e.target.value })}
-                        className="w-full border border-slate-200 p-3 rounded-xl outline-none bg-white font-bold text-slate-700"
+                        value={statusInput}
+                        onChange={(e) => setStatusInput(e.target.value)}
+                        disabled={isLocked}
+                        className="w-full border border-slate-200 p-3 rounded-xl outline-none bg-white font-bold text-slate-700 disabled:opacity-60"
                       >
                         <option value="reviewing">Оставить на рассмотрении</option>
                         <option value="accepted_oral">Принять как устный доклад</option>
@@ -115,7 +129,8 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                       value={reviewInput}
                       onChange={(e) => setReviewInput(e.target.value)}
                       placeholder="Укажите замечания или причину отказа..."
-                      className="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[120px]"
+                      disabled={isLocked}
+                      className="w-full border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 min-h-[120px] disabled:opacity-60"
                     ></textarea>
                   </div>
                   <div className="flex gap-3 justify-end items-center pt-2">

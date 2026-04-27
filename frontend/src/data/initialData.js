@@ -53,6 +53,8 @@ export const INITIAL_CONFERENCES = [
     id: '3b4ce3ee-edf9-40c3-86e4-568e7f6f39ff',
     title: 'Международная ИТ-конференция 2026',
     description: 'Главное событие года в мире технологий, искусственного интеллекта и кибербезопасности.',
+    is_public: true,
+    is_submit: true,
     submission_deadline: '2026-10-14T23:59:59.000Z',
     created_at: '2026-10-12T00:00:00.000Z'
   }
@@ -69,6 +71,7 @@ export const INITIAL_CONFERENCE_ROLES = [
     id: '40f8f7b6-d8cd-42fb-b9d8-f8c1db6fd4dd',
     user_id: '86d2c501-e63b-4f6f-b1da-74bd7db102f0',
     conference_id: '3b4ce3ee-edf9-40c3-86e4-568e7f6f39ff',
+    section_id: '74dc8819-e0cb-4237-b2ca-1011376a5d7e',
     role: 'chairman'
   }
 ];
@@ -118,6 +121,8 @@ export const INITIAL_SUBMISSIONS = [
     status: 'reviewing',
     current_file_id: '4fc38d83-db2f-4262-9dbe-c9bf64cf77f7',
     revision_count: 1,
+    reviewer_locked_round: null,
+    chairman_locked_round: null,
     is_best: false,
     created_at: now,
     updated_at: now

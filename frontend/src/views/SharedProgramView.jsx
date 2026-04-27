@@ -10,7 +10,7 @@ export default function SharedProgramView({ sections, submissions }) {
       </h2>
       {sections.map((sec) => {
         const accepted = submissions.filter(
-          (s) => s.sectionId === sec.id && s.headApproved && ['accepted_oral', 'accepted_poster', 'needs_revision'].includes(s.status)
+          (s) => s.sectionId === sec.id && s.chairmanLocked && ['accepted_oral', 'accepted_poster'].includes(s.status)
         );
 
         if (accepted.length === 0) return null;
@@ -30,9 +30,11 @@ export default function SharedProgramView({ sections, submissions }) {
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-800 leading-tight break-words mb-1">{p.theme}</h4>
                     <div className="flex flex-wrap gap-x-3 text-[10px] font-black uppercase tracking-widest">
-                      <span className="text-slate-400">Авторы: <span className="text-slate-700">{getAuthorsString(p)}</span></span>
-                      <span className={`${p.status === 'needs_revision' ? 'text-amber-500' : 'text-indigo-500'}`}>
-                        {p.status === 'accepted_oral' ? '• Устный доклад' : p.status === 'accepted_poster' ? '• Постерный доклад' : '• Доклад на доработке'}
+                      <span className="text-slate-400">
+                        Авторы: <span className="text-slate-700">{getAuthorsString(p)}</span>
+                      </span>
+                      <span className="text-indigo-500">
+                        • {p.status === 'accepted_oral' ? 'Устный доклад' : 'Постерный доклад'}
                       </span>
                     </div>
                   </div>
@@ -43,10 +45,10 @@ export default function SharedProgramView({ sections, submissions }) {
         );
       })}
 
-      {submissions.filter((s) => s.headApproved && ['accepted_oral', 'accepted_poster', 'needs_revision'].includes(s.status)).length === 0 && (
+      {submissions.filter((s) => s.chairmanLocked && ['accepted_oral', 'accepted_poster'].includes(s.status)).length === 0 && (
         <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
           <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Программа еще формируется</p>
+          <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Программа ещё формируется</p>
         </div>
       )}
     </div>
