@@ -19,6 +19,8 @@ import Sidebar from './components/layout/Sidebar';
 
 import AuthView from './components/common/AuthView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
+import { clearAccessToken, getAccessToken } from './api/client';
+import { createConference, listConferences } from './api/conferences';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -49,6 +51,8 @@ export default function App() {
   const [isConferenceSelected, setIsConferenceSelected] = useState(false);
   const [currentRole, setCurrentRole] = useState(ROLES.AUTHOR);
   const [activeTab, setActiveTab] = useState('main');
+  const [conferencesLoading, setConferencesLoading] = useState(false);
+  const [conferencesError, setConferencesError] = useState('');
 
   const [usersTable, setUsersTable] = useState(INITIAL_USERS);
   const [conferencesTable, setConferencesTable] = useState(INITIAL_CONFERENCES);
@@ -63,6 +67,36 @@ export default function App() {
 
   const [activeConfId, setActiveConfId] = useState(INITIAL_CONFERENCES[0]?.id || null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
+
+  useEffect(() => {
+    if (getAccessToken()) setIsAuthenticated(true);
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadConferences() {
+      if (!isAuthenticated) return;
+      setConferencesLoading(true);
+      setConferencesError('');
+      try {
+        const data = await listConferences();
+        if (!isActive) return;
+        if (Array.isArray(data)) setConferencesTable(data);
+      } catch (e) {
+        if (!isActive) return;
+        setConferencesError(e?.message || 'Не удалось загрузить список конференций.');
+      } finally {
+        if (isActive) setConferencesLoading(false);
+      }
+    }
+
+    loadConferences();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated]);
 
   const conferences = useMemo(
     () => conferencesTable.map((c) => ({
@@ -513,28 +547,60 @@ export default function App() {
             setActiveConfId(conferenceId);
             setIsConferenceSelected(true);
           }}
+          loading={conferencesLoading}
+          error={conferencesError}
         />
 
         <CreateConferenceModal
           isOpen={isCreateConfOpen}
           onClose={() => setIsCreateConfOpen(false)}
           onCreate={({ title, startDate, endDate }) => {
-            const newId = uuid();
-            setConferencesTable((prev) => [
-              ...prev,
-                {
-                  id: newId,
+            (async () => {
+              try {
+                const created = await createConference({
                   title,
                   description: '',
-                  is_public: false,
-                  is_submit: true,
-                  created_at: toIsoDate(startDate) || nowIso(),
-                  submission_deadline: toIsoDate(endDate) || nowIso()
-                }
-              ]);
-            setActiveConfId(newId);
-            setIsCreateConfOpen(false);
-            setIsConferenceSelected(true);
+                  submission_deadline: toIsoDate(endDate) || null,
+                  is_public: false
+                });
+
+                const newId = created?.id || uuid();
+
+                setConferencesTable((prev) => [
+                  ...prev,
+                  {
+                    id: newId,
+                    title: created?.title ?? title,
+                    description: created?.description ?? '',
+                    is_public: created?.is_public ?? false,
+                    is_submit: true,
+                    created_at: toIsoDate(startDate) || nowIso(),
+                    submission_deadline: created?.submission_deadline ?? (toIsoDate(endDate) || nowIso())
+                  }
+                ]);
+
+                setActiveConfId(newId);
+                setIsCreateConfOpen(false);
+                setIsConferenceSelected(true);
+              } catch {
+                const newId = uuid();
+                setConferencesTable((prev) => [
+                  ...prev,
+                  {
+                    id: newId,
+                    title,
+                    description: '',
+                    is_public: false,
+                    is_submit: true,
+                    created_at: toIsoDate(startDate) || nowIso(),
+                    submission_deadline: toIsoDate(endDate) || nowIso()
+                  }
+                ]);
+                setActiveConfId(newId);
+                setIsCreateConfOpen(false);
+                setIsConferenceSelected(true);
+              }
+            })();
           }}
         />
       </>
@@ -574,6 +640,7 @@ export default function App() {
           setActiveTab={setActiveTab}
           onBackToConferenceSelect={() => setIsConferenceSelected(false)}
           onLogout={() => {
+            clearAccessToken();
             setIsAuthenticated(false);
             setIsConferenceSelected(false);
             setIsCreateConfOpen(false);

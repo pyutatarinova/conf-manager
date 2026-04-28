@@ -13,10 +13,15 @@ file_repo = FileRepository()
 class FileService:
 
     def upload_file(self, db, upload_file: UploadFile, current_user):
-        if upload_file.content_type != "application/pdf":
+        allowed_types = {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        }
+
+        if upload_file.content_type not in allowed_types:
             raise HTTPException(
                 status_code=400,
-                detail="Only PDF files are allowed"
+                detail="Разрешены только PDF и DOCX файлы"
             )
 
         ensure_bucket_exists()

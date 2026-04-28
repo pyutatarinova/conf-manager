@@ -71,7 +71,7 @@ def make_superadmin(
     user = db.query(User).filter(User.id == user_id).first()
 
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
 
     user.is_superadmin = True
 

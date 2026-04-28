@@ -24,7 +24,7 @@ class SubmissionService:
         )
 
         if conference is None:
-            raise HTTPException(status_code=404, detail="Conference not found")
+            raise HTTPException(status_code=404, detail="Конференция не найдена")
 
         if data.section_id is not None:
             section = (
@@ -37,7 +37,7 @@ class SubmissionService:
             )
 
             if section is None:
-                raise HTTPException(status_code=404, detail="Section not found")
+                raise HTTPException(status_code=404, detail="Секция не найдена")
 
         file = (
             db.query(File)
@@ -46,12 +46,12 @@ class SubmissionService:
         )
 
         if file is None:
-            raise HTTPException(status_code=404, detail="File not found")
+            raise HTTPException(status_code=404, detail="Файл не найден")
 
         if file.uploaded_by != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="You can use only your own uploaded files"
+                detail="Можно использовать только загруженные вами файлы"
             )
 
         submission = Submission(

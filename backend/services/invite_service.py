@@ -15,7 +15,7 @@ class InviteService:
         if data.role not in ["chair", "reviewer"]:
             raise HTTPException(
                 status_code=400,
-                detail="Role must be 'chair' or 'reviewer'"
+                detail="Роль должна быть 'chair' или 'reviewer'"
             )
 
         token = secrets.token_urlsafe(32)

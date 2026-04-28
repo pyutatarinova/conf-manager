@@ -1,7 +1,7 @@
 import { CalendarDays, Plus } from 'lucide-react';
 import { formatConferenceDate } from '../utils/helpers';
 
-export default function ConferenceSelectView({ conferences, onSelect, isAdmin, onCreateConference }) {
+export default function ConferenceSelectView({ conferences, onSelect, isAdmin, onCreateConference, loading = false, error = '' }) {
   const visibleConferences = isAdmin ? conferences : conferences.filter((c) => c.isPublic);
 
   return (
@@ -22,6 +22,12 @@ export default function ConferenceSelectView({ conferences, onSelect, isAdmin, o
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Boolean(conferences?.length === 0 && (loading || error)) && (
+            <div className="col-span-full bg-white border border-slate-100 rounded-3xl p-6 text-center">
+              {loading && <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">Загрузка…</p>}
+              {!loading && error && <p className="text-red-600 font-semibold text-sm">{error}</p>}
+            </div>
+          )}
           {visibleConferences.map((conference) => {
             const startDate = formatConferenceDate(conference.startDate);
             const endDate = formatConferenceDate(conference.endDate);

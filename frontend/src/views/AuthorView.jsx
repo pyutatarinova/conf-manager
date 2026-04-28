@@ -7,6 +7,9 @@ import {
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
+import { uploadFile } from '../api/files';
+import { createSubmission } from '../api/submissions';
+
 const ACCEPTED_FILE_TYPES = '.pdf,.docx';
 
 const isSupportedFile = (file) => {
@@ -14,6 +17,8 @@ const isSupportedFile = (file) => {
   const lowerName = file.name.toLowerCase();
   return lowerName.endsWith('.pdf') || lowerName.endsWith('.docx');
 };
+
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 
 export default function AuthorView({ activeConfId, isSubmitOpen, sections, submissions, setSubmissions, updateSubmission }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +31,7 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
   const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '', position: '' }]);
   const removeCoAuthor = (idx) => setCoAuthors(coAuthors.filter((_, i) => i !== idx));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isSubmitOpen) {
       setSubmitError('Приём заявок закрыт. Вы можете просматривать ранее поданные работы.');
@@ -43,26 +48,43 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
 
     setSubmitError('');
 
-    setSubmissions([...submissions, {
-      id: Date.now(),
-      conferenceId: activeConfId,
-      authorName: fd.get('fullName'),
-      email: fd.get('email'),
-      position: fd.get('position'),
-      coAuthors,
-      theme: fd.get('theme'),
-      sectionId: fd.get('sectionId'),
-      fileName: paperFile.name || 'doc.pdf',
-      thesisFileName: thesisFile.name || 'thesis.pdf',
-      status: 'reviewing',
-      revisionCount: 0,
-      reviewText: '',
-      reviewerId: null,
-      isBest: false
-    }]);
+    try {
+      // Backend submission currently accepts one file_id; we bind it to the main paper file.
+      const uploaded = await uploadFile(paperFile);
+      const fileId = uploaded?.id;
+      if (!fileId) throw new Error('Не удалось загрузить файл.');
 
-    setIsSubmitting(false);
-    setCoAuthors([]);
+      const created = await createSubmission({
+        conference_id: activeConfId,
+        section_id: isUuid(fd.get('sectionId')) ? fd.get('sectionId') : null,
+        title: fd.get('theme'),
+        file_id: fileId
+      });
+
+      setSubmissions([...submissions, {
+        id: created?.id || Date.now(),
+        conferenceId: activeConfId,
+        authorName: fd.get('fullName'),
+        email: fd.get('email'),
+        position: fd.get('position'),
+        coAuthors,
+        theme: fd.get('theme'),
+        sectionId: fd.get('sectionId'),
+        fileName: paperFile.name || 'doc.pdf',
+        thesisFileName: thesisFile.name || 'thesis.pdf',
+        status: 'reviewing',
+        revisionCount: 0,
+        reviewText: '',
+        reviewerId: null,
+        isBest: false,
+        backendFileId: fileId
+      }]);
+
+      setIsSubmitting(false);
+      setCoAuthors([]);
+    } catch (err) {
+      setSubmitError(err?.message || 'Не удалось отправить работу.');
+    }
   };
 
   const handleRevisionFilesChange = (submissionId, field, file) => {
@@ -85,20 +107,32 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
       return;
     }
 
-    updateSubmission(sub.id, {
-      status: 'reviewing',
-      revisionCount: sub.revisionCount + 1,
-      fileName: files.paper.name || sub.fileName,
-      thesisFileName: files.thesis.name || sub.thesisFileName,
-      reviewText: ''
-    });
+    (async () => {
+      try {
+        const uploaded = await uploadFile(files.paper);
+        const fileId = uploaded?.id;
+        if (!fileId) throw new Error('Не удалось загрузить исправленную версию.');
 
-    setRevisionUploads((prev) => {
-      const next = { ...prev };
-      delete next[sub.id];
-      return next;
-    });
-    setRevisionErrors((prev) => ({ ...prev, [sub.id]: '' }));
+        updateSubmission(sub.id, {
+          status: 'reviewing',
+          revisionCount: sub.revisionCount + 1,
+          fileName: files.paper.name || sub.fileName,
+          thesisFileName: files.thesis.name || sub.thesisFileName,
+          reviewText: '',
+          backendFileId: fileId
+        });
+
+        setRevisionUploads((prev) => {
+          const next = { ...prev };
+          delete next[sub.id];
+          return next;
+        });
+        setRevisionErrors((prev) => ({ ...prev, [sub.id]: '' }));
+      } catch (e) {
+        setRevisionErrors((prev) => ({ ...prev, [sub.id]: e?.message || 'Не удалось загрузить исправленную версию.' }));
+      }
+    })();
+
   };
 
   return (

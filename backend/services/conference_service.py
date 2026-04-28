@@ -40,6 +40,6 @@ class ConferenceService:
         conference = conference_repo.get_by_id(db, conference_id)
 
         if conference is None:
-            raise HTTPException(status_code=404, detail="Conference not found")
+            raise HTTPException(status_code=404, detail="Конференция не найдена")
 
         return conference
