@@ -68,9 +68,43 @@ class SubmissionService:
         submission_file = SubmissionFile(
             submission_id=submission.id,
             file_id=data.file_id,
-            version=1
+            version=1,
+            file_type="paper"
         )
 
         submission_file_repo.create(db, submission_file)
 
         return submission
+
+    def attach_thesis(self, db, submission_id, file_id, current_user):
+        submission = (
+            db.query(Submission)
+            .filter(Submission.id == submission_id)
+            .first()
+        )
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Работа не найдена")
+
+        file = (
+            db.query(File)
+            .filter(File.id == file_id)
+            .first()
+        )
+
+        if file is None:
+            raise HTTPException(status_code=404, detail="Файл не найден")
+
+        if file.uploaded_by != current_user.id:
+            raise HTTPException(status_code=403, detail="Можно прикреплять только загруженные вами файлы")
+
+        version = submission.revision_count
+        submission_file = SubmissionFile(
+            submission_id=submission.id,
+            file_id=file.id,
+            version=version,
+            file_type="thesis"
+        )
+
+        submission_file_repo.create(db, submission_file)
+        return submission_file

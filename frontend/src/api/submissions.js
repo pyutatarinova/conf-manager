@@ -11,3 +11,9 @@ export async function listConferenceSubmissions(conferenceId) {
   return apiRequest(`/submissions/conference/${conferenceId}`, { method: 'GET' });
 }
 
+export async function attachThesis(submissionId, fileId) {
+  return apiRequest(`/submissions/${submissionId}/thesis`, {
+    method: 'POST',
+    body: { file_id: fileId }
+  });
+}

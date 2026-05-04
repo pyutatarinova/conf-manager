@@ -21,6 +21,8 @@ import AuthView from './components/common/AuthView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
 import { clearAccessToken, getAccessToken } from './api/client';
 import { createConference, listConferences } from './api/conferences';
+import { sendEmail } from './api/notifications';
+import { getMe } from './api/users';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -48,6 +50,7 @@ const buildMimeType = (name) => {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [isConferenceSelected, setIsConferenceSelected] = useState(false);
   const [currentRole, setCurrentRole] = useState(ROLES.AUTHOR);
   const [activeTab, setActiveTab] = useState('main');
@@ -68,9 +71,42 @@ export default function App() {
   const [activeConfId, setActiveConfId] = useState(INITIAL_CONFERENCES[0]?.id || null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
 
+  const safeSendEmail = (payload) => {
+    try {
+      void sendEmail(payload).catch(() => {});
+    } catch {
+      // ignore client-side email errors in demo/local mode
+    }
+  };
+
   useEffect(() => {
     if (getAccessToken()) setIsAuthenticated(true);
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMe() {
+      if (!isAuthenticated) {
+        setCurrentUser(null);
+        return;
+      }
+      try {
+        const me = await getMe();
+        if (!isActive) return;
+        setCurrentUser(me || null);
+      } catch {
+        if (!isActive) return;
+        setCurrentUser(null);
+      }
+    }
+
+    loadMe();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let isActive = true;
@@ -192,6 +228,21 @@ export default function App() {
         };
       });
   }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, reviewAssignmentsTable, activeConfId]);
+
+  const visibleSubmissions = useMemo(() => {
+    if (currentRole !== ROLES.AUTHOR) return curSubmissions;
+
+    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
+    if (!myEmail) return [];
+
+    const allowedIds = new Set(
+      submissionAuthorsTable
+        .filter((a) => String(a.email || '').trim().toLowerCase() === myEmail)
+        .map((a) => a.submission_id)
+    );
+
+    return curSubmissions.filter((s) => allowedIds.has(s.id));
+  }, [curSubmissions, currentRole, currentUser, submissionAuthorsTable]);
 
   const currentReviewerId = curUsers.find((u) => u.role === 'reviewer')?.id || null;
   const currentChairmanId = curUsers.find((u) => u.role === 'chairman')?.id || null;
@@ -409,7 +460,19 @@ export default function App() {
         || (actorRole === 'reviewer' && !isReviewerLockedForRound && !isChairmanLockedForRound)
         || (actorRole === 'chairman' && !isChairmanLockedForRound);
 
-      if (canEditStatus) nextSubmission.status = updates.status;
+      if (canEditStatus) {
+        nextSubmission.status = updates.status;
+
+        const authors = submissionAuthorsTable.filter((a) => a.submission_id === id);
+        const uniqueEmails = [...new Set(authors.map((a) => a.email).filter(Boolean))];
+        uniqueEmails.forEach((email) => {
+          safeSendEmail({
+            to: email,
+            subject: 'Изменение статуса работы',
+            text: `Статус вашей работы "${currentSubmission.title}" изменен на: ${updates.status}`
+          });
+        });
+      }
     }
 
     if (updates.revisionCount !== undefined) {
@@ -470,6 +533,17 @@ export default function App() {
     if (updates.reviewerId !== undefined) {
       if (actorRole !== 'chairman' && actorRole !== 'admin') return;
       if (actorRole === 'chairman' && isChairmanLockedForRound) return;
+
+      if (updates.reviewerId) {
+        const reviewer = usersTable.find((u) => u.id === updates.reviewerId);
+        if (reviewer?.email) {
+          safeSendEmail({
+            to: reviewer.email,
+            subject: 'Назначена работа на рецензирование',
+            text: `Вам назначена работа "${currentSubmission.title}" для рецензирования.`
+          });
+        }
+      }
       setReviewAssignmentsTable((prev) => {
         const without = prev.filter((a) => a.submission_id !== id);
         if (!updates.reviewerId) return without;
@@ -651,9 +725,11 @@ export default function App() {
             {activeTab === 'main' && currentRole === ROLES.AUTHOR && (
               <AuthorView
                 activeConfId={activeConfId}
+                currentUser={currentUser}
+                sendEmail={safeSendEmail}
                 isSubmitOpen={activeConf?.isSubmit ?? true}
                 sections={curSections}
-                submissions={curSubmissions}
+                submissions={visibleSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.AUTHOR)}
                 setSubmissions={setSubmissions}
               />

@@ -8,7 +8,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
 import { uploadFile } from '../api/files';
-import { createSubmission } from '../api/submissions';
+import { attachThesis, createSubmission } from '../api/submissions';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.docx';
 
@@ -20,7 +20,7 @@ const isSupportedFile = (file) => {
 
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 
-export default function AuthorView({ activeConfId, isSubmitOpen, sections, submissions, setSubmissions, updateSubmission }) {
+export default function AuthorView({ activeConfId, currentUser, sendEmail, isSubmitOpen, sections, submissions, setSubmissions, updateSubmission }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coAuthors, setCoAuthors] = useState([]);
   const [expandedReview, setExpandedReview] = useState(null);
@@ -35,6 +35,12 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
     e.preventDefault();
     if (!isSubmitOpen) {
       setSubmitError('Приём заявок закрыт. Вы можете просматривать ранее поданные работы.');
+      return;
+    }
+
+    const myEmail = String(currentUser?.email || '').trim();
+    if (!myEmail) {
+      setSubmitError('Не удалось определить email вашего аккаунта. Перезайдите в систему.');
       return;
     }
     const fd = new FormData(e.target);
@@ -54,6 +60,10 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
       const fileId = uploaded?.id;
       if (!fileId) throw new Error('Не удалось загрузить файл.');
 
+      const uploadedThesis = await uploadFile(thesisFile);
+      const thesisFileId = uploadedThesis?.id;
+      if (!thesisFileId) throw new Error('Не удалось загрузить файл тезиса.');
+
       const created = await createSubmission({
         conference_id: activeConfId,
         section_id: isUuid(fd.get('sectionId')) ? fd.get('sectionId') : null,
@@ -61,12 +71,17 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
         file_id: fileId
       });
 
+      const submissionId = created?.id;
+      if (submissionId) {
+        await attachThesis(submissionId, thesisFileId);
+      }
+
       setSubmissions([...submissions, {
         id: created?.id || Date.now(),
         conferenceId: activeConfId,
         authorName: fd.get('fullName'),
-        email: fd.get('email'),
-        position: fd.get('position'),
+        email: myEmail,
+        position: fd.get('position') || currentUser?.affiliation || '',
         coAuthors,
         theme: fd.get('theme'),
         sectionId: fd.get('sectionId'),
@@ -77,11 +92,21 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
         reviewText: '',
         reviewerId: null,
         isBest: false,
-        backendFileId: fileId
+        backendFileId: fileId,
+        backendThesisFileId: thesisFileId
       }]);
 
       setIsSubmitting(false);
       setCoAuthors([]);
+
+      const uniqueCoauthorEmails = [...new Set(coAuthors.map((a) => String(a.email || '').trim()).filter(Boolean))];
+      uniqueCoauthorEmails.forEach((email) => {
+        sendEmail?.({
+          to: email,
+          subject: 'Вы указаны соавтором работы',
+          text: `Вас указали соавтором работы "${fd.get('theme')}". Если у вас уже есть аккаунт с этой почтой — работа появится в личном кабинете. Если нет — зарегистрируйтесь с этой почтой.`
+        });
+      });
     } catch (err) {
       setSubmitError(err?.message || 'Не удалось отправить работу.');
     }
@@ -113,14 +138,23 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
         const fileId = uploaded?.id;
         if (!fileId) throw new Error('Не удалось загрузить исправленную версию.');
 
+        const uploadedThesis = await uploadFile(files.thesis);
+        const thesisFileId = uploadedThesis?.id;
+        if (!thesisFileId) throw new Error('Не удалось загрузить исправленную версию тезиса.');
+
         updateSubmission(sub.id, {
           status: 'reviewing',
           revisionCount: sub.revisionCount + 1,
           fileName: files.paper.name || sub.fileName,
           thesisFileName: files.thesis.name || sub.thesisFileName,
           reviewText: '',
-          backendFileId: fileId
+          backendFileId: fileId,
+          backendThesisFileId: thesisFileId
         });
+
+        if (sub.id) {
+          await attachThesis(sub.id, thesisFileId);
+        }
 
         setRevisionUploads((prev) => {
           const next = { ...prev };
@@ -169,15 +203,15 @@ export default function AuthorView({ activeConfId, isSubmitOpen, sections, submi
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Основной автор (ФИО)</label>
-              <input required name="fullName" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Иванов И.И." />
+              <input required name="fullName" defaultValue={currentUser?.name || ''} className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Иванов И.И." />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
-              <input required name="email" type="email" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="ivanov@uni.ru" />
+              <input value={currentUser?.email || ''} readOnly className="w-full border border-slate-200 p-3.5 rounded-xl outline-none bg-slate-50 text-slate-600" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Должность</label>
-              <input required name="position" className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Аспирант" />
+              <input name="position" defaultValue={currentUser?.affiliation || ''} className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Аспирант" />
             </div>
           </div>
 

@@ -33,17 +33,35 @@ services:
     ports:
       - "6379:6379"
 
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: conf_mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
   backend:
     build: ./backend
     container_name: conf_backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     depends_on:
       - db
       - minio
       - redis
+      - mailhog
+    environment:
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_FROM: no-reply@conf.local
+      SMTP_USE_SSL: "false"
+      SMTP_USE_STARTTLS: "false"
+      FRONTEND_BASE_URL: http://localhost:5173
+    volumes:
+      - ./backend:/app
 
-frontend:
+  frontend:
     build: ./frontend
     container_name: conf_frontend
     restart: always

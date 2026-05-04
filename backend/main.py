@@ -5,6 +5,7 @@ from sqlalchemy import text
 from api.conferences import router as conferences_router
 from api.dev import router as dev_router
 from api.files import router as files_router
+from api.notifications import router as notifications_router
 from api.submissions import router as submissions_router
 from auth.router import router as auth_router
 from database import Base, SessionLocal, engine
@@ -40,6 +41,7 @@ app.include_router(conferences_router, prefix="/conferences", tags=["conferences
 app.include_router(dev_router, prefix="/dev", tags=["dev"])
 app.include_router(files_router, prefix="/files", tags=["files"])
 app.include_router(submissions_router, prefix="/submissions", tags=["submissions"])
+app.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 
 @app.on_event("startup")
 def _create_tables_on_startup():

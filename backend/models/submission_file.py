@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, DateTime, Integer, ForeignKey, UniqueConstraint, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from database import Base
@@ -26,12 +26,15 @@ class SubmissionFile(Base):
 
     version = Column(Integer, nullable=False)
 
+    file_type = Column(Text, nullable=False, default="paper")
+
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         UniqueConstraint(
             "submission_id",
             "version",
-            name="unique_submission_version"
+            "file_type",
+            name="unique_submission_version_type"
         ),
     )

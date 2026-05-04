@@ -8,6 +8,7 @@ from models.user import User
 from auth.dependencies import get_current_user
 
 from schemas.submission import SubmissionCreate
+from schemas.submission_file import AttachThesisRequest
 from services.submission_service import SubmissionService
 
 
@@ -62,3 +63,20 @@ def list_conference_submissions(
         }
         for s in submissions
     ]
+
+
+@router.post("/{submission_id}/thesis")
+def attach_thesis(
+    submission_id: UUID,
+    data: AttachThesisRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    submission_service.attach_thesis(
+        db=db,
+        submission_id=submission_id,
+        file_id=data.file_id,
+        current_user=current_user,
+    )
+
+    return {"status": "attached"}
