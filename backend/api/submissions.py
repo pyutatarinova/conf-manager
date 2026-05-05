@@ -10,10 +10,13 @@ from auth.dependencies import get_current_user
 from schemas.submission import SubmissionCreate
 from schemas.submission_file import AttachThesisRequest
 from services.submission_service import SubmissionService
+from schemas.submission_author import SubmissionAuthorCreate
+from services.submission_author_service import SubmissionAuthorService
 
 
 router = APIRouter()
 submission_service = SubmissionService()
+submission_author_service = SubmissionAuthorService()
 
 
 @router.post("/")
@@ -31,7 +34,7 @@ def create_submission(
     return {
         "id": str(submission.id),
         "conference_id": str(submission.conference_id),
-        "section_id": str(submission.section_id) if submission.section_id else None,
+        "section_id": str(submission.section_id),
         "title": submission.title,
         "status": submission.status,
         "current_file_id": str(submission.current_file_id),
@@ -80,3 +83,54 @@ def attach_thesis(
     )
 
     return {"status": "attached"}
+
+@router.post("/{submission_id}/authors")
+def add_submission_author(
+    submission_id: UUID,
+    data: SubmissionAuthorCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    author = submission_author_service.add_author(
+        db=db,
+        submission_id=submission_id,
+        data=data,
+        current_user=current_user
+    )
+
+    return {
+        "id": str(author.id),
+        "submission_id": str(author.submission_id),
+        "user_id": str(author.user_id) if author.user_id else None,
+        "name": author.name,
+        "email": author.email,
+        "affiliation": author.affiliation,
+        "author_order": author.author_order,
+        "is_corresponding": author.is_corresponding
+    }
+
+@router.get("/{submission_id}/authors")
+def list_submission_authors(
+    submission_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    authors = submission_author_service.list_authors(
+        db=db,
+        submission_id=submission_id,
+        current_user=current_user
+    )
+
+    return [
+        {
+            "id": str(author.id),
+            "submission_id": str(author.submission_id),
+            "user_id": str(author.user_id) if author.user_id else None,
+            "name": author.name,
+            "email": author.email,
+            "affiliation": author.affiliation,
+            "author_order": author.author_order,
+            "is_corresponding": author.is_corresponding
+        }
+        for author in authors
+    ]

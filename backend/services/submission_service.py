@@ -5,6 +5,7 @@ from models.submission import Submission
 from models.submission_file import SubmissionFile
 from models.conference import Conference
 from models.section import Section
+from models.submission_author import SubmissionAuthor
 
 from repositories.submission_repo import SubmissionRepository
 from repositories.submission_file_repo import SubmissionFileRepository
@@ -24,34 +25,54 @@ class SubmissionService:
         )
 
         if conference is None:
-            raise HTTPException(status_code=404, detail="Конференция не найдена")
+            raise HTTPException(status_code=404, detail="Conference not found")
 
-        if data.section_id is not None:
-            section = (
-                db.query(Section)
-                .filter(
-                    Section.id == data.section_id,
-                    Section.conference_id == data.conference_id
-                )
-                .first()
+        section = (
+            db.query(Section)
+            .filter(
+                Section.id == data.section_id,
+                Section.conference_id == data.conference_id
             )
-
-            if section is None:
-                raise HTTPException(status_code=404, detail="Секция не найдена")
-
-        file = (
-            db.query(File)
-            .filter(File.id == data.file_id)
             .first()
         )
 
-        if file is None:
-            raise HTTPException(status_code=404, detail="Файл не найден")
+        if section is None:
+            raise HTTPException(status_code=404, detail="Section not found")
 
-        if file.uploaded_by != current_user.id:
+        article_file = (
+            db.query(File)
+            .filter(File.id == data.article_file_id)
+            .first()
+        )
+
+        if article_file is None:
+            raise HTTPException(status_code=404, detail="Article file not found")
+
+        abstract_file = (
+            db.query(File)
+            .filter(File.id == data.abstract_file_id)
+            .first()
+        )
+
+        if abstract_file is None:
+            raise HTTPException(status_code=404, detail="Abstract file not found")
+
+        if article_file.uploaded_by != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="Можно использовать только загруженные вами файлы"
+                detail="You can use only your own article file"
+            )
+
+        if abstract_file.uploaded_by != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can use only your own abstract file"
+            )
+
+        if article_file.id == abstract_file.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Article file and abstract file must be different"
             )
 
         submission = Submission(
@@ -59,22 +80,45 @@ class SubmissionService:
             section_id=data.section_id,
             title=data.title,
             status="submitted",
-            current_file_id=data.file_id,
+            current_file_id=data.article_file_id,
             revision_count=1
         )
 
         submission = submission_repo.create(db, submission)
 
-        submission_file = SubmissionFile(
+        article_submission_file = SubmissionFile(
             submission_id=submission.id,
-            file_id=data.file_id,
+            file_id=data.article_file_id,
             version=1,
-            file_type="paper"
+            file_type="article"
         )
 
-        submission_file_repo.create(db, submission_file)
+        abstract_submission_file = SubmissionFile(
+            submission_id=submission.id,
+            file_id=data.abstract_file_id,
+            version=1,
+            file_type="abstract"
+        )
+
+        submission_file_repo.create(db, article_submission_file)
+        submission_file_repo.create(db, abstract_submission_file)
+
+        main_author = SubmissionAuthor(
+            submission_id=submission.id,
+            user_id=current_user.id,    
+            name=current_user.name,
+            email=current_user.email,
+            affiliation=data.affiliation or current_user.affiliation,
+            author_order=1,
+            is_corresponding=True
+)
+        
+        db.add(main_author)
+        db.commit()
+        db.refresh(main_author)
 
         return submission
+
 
     def attach_thesis(self, db, submission_id, file_id, current_user):
         submission = (

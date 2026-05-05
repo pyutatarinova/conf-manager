@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User
+from models.section import Section
 
 from auth.admin import require_superadmin
 from auth.dependencies import get_current_user
@@ -12,6 +13,7 @@ from auth.roles import require_conference_role
 
 from schemas.conference import ConferenceCreate
 from schemas.invite import InviteCreate
+from schemas.section import SectionCreate
 
 from services.conference_service import ConferenceService
 from services.invite_service import InviteService
@@ -132,3 +134,49 @@ def create_invite(
         "token": invite.token,
         "invite_link": f"http://localhost:3000/register/invite?token={invite.token}"
     }
+
+@router.post("/{conference_id}/sections")
+def create_section(
+    conference_id: UUID,
+    data: SectionCreate,
+    current_user: User = Depends(require_conference_role(["admin"])),
+    db: Session = Depends(get_db)
+):
+    section = Section(
+        conference_id=conference_id,
+        name=data.name,
+        description=data.description
+    )
+
+    db.add(section)
+    db.commit()
+    db.refresh(section)
+
+    return {
+        "id": str(section.id),
+        "conference_id": str(section.conference_id),
+        "name": section.name,
+        "description": section.description
+    }
+
+@router.get("/{conference_id}/sections")
+def list_sections(
+    conference_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    sections = (
+        db.query(Section)
+        .filter(Section.conference_id == conference_id)
+        .all()
+    )
+
+    return [
+        {
+            "id": str(section.id),
+            "conference_id": str(section.conference_id),
+            "name": section.name,
+            "description": section.description
+        }
+        for section in sections
+    ]

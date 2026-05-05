@@ -17,6 +17,7 @@ from models.section import Section
 from models.submission import Submission
 from models.submission_file import SubmissionFile
 from models.user import User
+from models.submission_author import SubmissionAuthor
 
 app = FastAPI(
     title="Conference Platform API",

@@ -26,7 +26,7 @@ class SubmissionFile(Base):
 
     version = Column(Integer, nullable=False)
 
-    file_type = Column(Text, nullable=False, default="paper")
+    file_type = Column(Text, nullable=False)
 
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 

@@ -6,4 +6,7 @@ class SubmissionCreate(BaseModel):
     conference_id: UUID
     section_id: UUID | None = None
     title: str
-    file_id: UUID
+    article_file_id: UUID
+    abstract_file_id: UUID
+
+    affiliation: str | None = None
