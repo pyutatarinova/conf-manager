@@ -2,6 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse
+from urllib.parse import quote
 
 from database import get_db
 from models.user import User
@@ -134,3 +136,70 @@ def list_submission_authors(
         }
         for author in authors
     ]
+
+@router.get("/{submission_id}/files")
+def list_submission_files(
+    submission_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    submission_files = submission_service.list_submission_files(
+        db=db,
+        submission_id=submission_id,
+        current_user=current_user
+    )
+
+    return [
+        {
+            "id": str(sf.id),
+            "submission_id": str(sf.submission_id),
+            "file_id": str(sf.file_id),
+            "version": sf.version,
+            "file_type": sf.file_type,
+            "uploaded_at": sf.uploaded_at
+        }
+        for sf in submission_files
+    ]
+
+
+@router.get("/{submission_id}/files/{file_type}/download")
+def download_submission_file(
+    submission_id: UUID,
+    file_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return submission_service.get_download_link(
+        db=db,
+        submission_id=submission_id,
+        file_type=file_type,
+        current_user=current_user
+    )
+
+@router.get("/{submission_id}/files/{file_type}/download-direct")
+def download_submission_file_direct(
+    submission_id: UUID,
+    file_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    file_stream, file = submission_service.get_file_stream(
+        db=db,
+        submission_id=submission_id,
+        file_type=file_type,
+        current_user=current_user
+    )
+
+    encoded_filename = quote(file.original_name)
+
+    return StreamingResponse(
+        file_stream,
+        media_type=file.mime_type,
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{encoded_filename}"
+            )
+        }
+    )
+
+

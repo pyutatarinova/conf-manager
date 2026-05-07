@@ -58,6 +58,10 @@ services:
       SMTP_USE_SSL: "false"
       SMTP_USE_STARTTLS: "false"
       FRONTEND_BASE_URL: http://localhost:5173
+      MINIO_INTERNAL_HOST: minio:9000
+      MINIO_PUBLIC_HOST: host.docker.internal:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: password123
     volumes:
       - ./backend:/app
 

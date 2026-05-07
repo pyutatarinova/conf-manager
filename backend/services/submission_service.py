@@ -6,10 +6,12 @@ from models.submission_file import SubmissionFile
 from models.conference import Conference
 from models.section import Section
 from models.submission_author import SubmissionAuthor
+from models.conference_role import ConferenceRole
 
 from repositories.submission_repo import SubmissionRepository
 from repositories.submission_file_repo import SubmissionFileRepository
 
+from integrations.minio_client import minio_client, MINIO_BUCKET
 
 submission_repo = SubmissionRepository()
 submission_file_repo = SubmissionFileRepository()
@@ -152,3 +154,132 @@ class SubmissionService:
 
         submission_file_repo.create(db, submission_file)
         return submission_file
+
+    def _can_access_submission_files(self, db, submission, current_user):
+    # 1. Автор заявки может скачать свои файлы
+        is_author = (
+            db.query(SubmissionAuthor)
+            .filter(
+                SubmissionAuthor.submission_id == submission.id,
+                SubmissionAuthor.user_id == current_user.id
+            )
+            .first()
+        )
+
+        if is_author:
+            return True
+
+        # 2. Admin / chair / reviewer конференции могут скачать файлы
+        role = (
+            db.query(ConferenceRole)
+            .filter(
+                ConferenceRole.user_id == current_user.id,
+                ConferenceRole.conference_id == submission.conference_id,
+                ConferenceRole.role.in_(["admin", "chair", "reviewer"])
+            )
+            .first()
+        )
+
+        if role:
+            return True
+
+        return False
+
+
+    def list_submission_files(self, db, submission_id, current_user):
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        if not self._can_access_submission_files(db, submission, current_user):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+
+        submission_files = submission_file_repo.list_by_submission(
+            db=db,
+            submission_id=submission_id
+        )
+
+        return submission_files
+
+
+    def get_download_link(self, db, submission_id, file_type, current_user):
+        if file_type not in ["article", "abstract"]:
+            raise HTTPException(
+                status_code=400,
+                detail="file_type must be article or abstract"
+            )
+
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        if not self._can_access_submission_files(db, submission, current_user):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+
+        submission_file = submission_file_repo.get_latest_by_type(
+            db=db,
+            submission_id=submission_id,
+            file_type=file_type
+        )
+
+        if submission_file is None:
+            raise HTTPException(status_code=404, detail="File not found for this submission")
+
+        file = (
+            db.query(File)
+            .filter(File.id == submission_file.file_id)
+            .first()
+        )
+
+        if file is None:
+            raise HTTPException(status_code=404, detail="File metadata not found")
+
+        download_url = get_presigned_download_url(file.storage_path)
+
+        return {
+            "file_id": str(file.id),
+            "file_type": submission_file.file_type,
+            "version": submission_file.version,
+            "original_name": file.original_name,
+            "mime_type": file.mime_type,
+            "size": file.size,
+            "download_url": download_url
+        }
+    
+    def get_file_stream(self, db, submission_id, file_type, current_user):
+        if file_type not in ["article", "abstract"]:
+            raise HTTPException(
+                status_code=400,
+                detail="file_type must be article or abstract"
+            )
+
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        if not self._can_access_submission_files(db, submission, current_user):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+
+        submission_file = submission_file_repo.get_latest_by_type(
+            db=db,
+            submission_id=submission_id,
+            file_type=file_type
+        )
+
+        if submission_file is None:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        file = db.query(File).filter(File.id == submission_file.file_id).first()
+
+        if file is None:
+            raise HTTPException(status_code=404, detail="File metadata not found")
+
+        response = minio_client.get_object(
+            bucket_name=MINIO_BUCKET,
+            object_name=file.storage_path
+        )
+
+        return response, file
