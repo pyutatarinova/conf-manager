@@ -3,6 +3,8 @@ import { Award } from 'lucide-react';
 
 import { login, register } from '../../api/auth';
 
+const hasLetter = (value) => /[A-Za-zА-Яа-я]/.test(String(value || ''));
+
 export default function AuthView({ onAuth }) {
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
@@ -20,6 +22,12 @@ export default function AuthView({ onAuth }) {
       if (isLogin) {
         const token = await login({ email, password });
         onAuth?.(token);
+        return;
+      }
+
+      const value = String(password || '');
+      if (value.length < 6 || !hasLetter(value)) {
+        setError('Пароль: минимум 6 символов и хотя бы одна буква.');
         return;
       }
 
@@ -102,9 +110,10 @@ export default function AuthView({ onAuth }) {
           className="w-full mt-6 text-sm text-slate-400 hover:text-indigo-600 font-bold transition-colors"
           disabled={isSubmitting}
         >
-          {isLogin ? 'У вас еще нет аккаунта?' : 'Уже зарегистрированы? Войти'}
+          {isLogin ? 'У вас ещё нет аккаунта?' : 'Уже зарегистрированы? Войти'}
         </button>
       </div>
     </div>
   );
 }
+

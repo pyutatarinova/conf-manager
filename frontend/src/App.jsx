@@ -20,9 +20,10 @@ import Sidebar from './components/layout/Sidebar';
 import AuthView from './components/common/AuthView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
 import { clearAccessToken, getAccessToken } from './api/client';
-import { createConference, listConferences } from './api/conferences';
+import { createConference, listConferences, listSections } from './api/conferences';
 import { sendEmail } from './api/notifications';
 import { getMe } from './api/users';
+import { listConferenceSubmissions, listSubmissionAuthors } from './api/submissions';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -134,14 +135,172 @@ export default function App() {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSections() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await listSections(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        setSectionsTable((prev) => {
+          const withoutConf = prev.filter((s) => s.conference_id !== activeConfId);
+          const nextForConf = data.map((s) => ({
+            id: s.id,
+            conference_id: s.conference_id,
+            name: s.name,
+            description: s.description
+          }));
+          return [...withoutConf, ...nextForConf];
+        });
+      } catch {
+        // ignore sections load errors in demo/local mode
+      }
+    }
+
+    loadSections();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSubmissions() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await listConferenceSubmissions(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+
+        const normalizedSubmissions = data.map((s) => ({
+          id: s.id,
+          conference_id: activeConfId,
+          section_id: s.section_id || null,
+          title: s.title,
+          status: s.status,
+          current_file_id: s.current_file_id || null,
+          revision_count: s.revision_count ?? 1,
+          is_best: s.is_best ?? false,
+          created_at: s.created_at || nowIso(),
+          updated_at: s.updated_at || nowIso()
+        }));
+
+        setSubmissionsTable((prev) => {
+          const withoutConf = prev.filter((s) => s.conference_id !== activeConfId);
+          return [...withoutConf, ...normalizedSubmissions];
+        });
+
+        const authorsBySubmission = await Promise.all(
+          normalizedSubmissions.map(async (s) => {
+            try {
+              const authors = await listSubmissionAuthors(s.id);
+              return { submissionId: s.id, authors: Array.isArray(authors) ? authors : [] };
+            } catch {
+              return { submissionId: s.id, authors: [] };
+            }
+          })
+        );
+
+        if (!isActive) return;
+
+        setSubmissionAuthorsTable((prev) => {
+          const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
+          const next = [];
+          authorsBySubmission.forEach(({ submissionId, authors }) => {
+            authors.forEach((a) => {
+              next.push({
+                id: a.id || uuid(),
+                submission_id: submissionId,
+                user_id: a.user_id || null,
+                name: a.name,
+                email: a.email,
+                affiliation: a.affiliation || '',
+                author_order: a.author_order ?? 1,
+                is_corresponding: Boolean(a.is_corresponding)
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
+      } catch {
+        // ignore submissions load errors in demo/local mode
+      }
+    }
+
+    loadSubmissions();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId]);
+
+  const refreshSubmissions = async (conferenceId) => {
+    if (!conferenceId) return;
+    const data = await listConferenceSubmissions(conferenceId);
+    if (!Array.isArray(data)) return;
+
+    const normalizedSubmissions = data.map((s) => ({
+      id: s.id,
+      conference_id: conferenceId,
+      section_id: s.section_id || null,
+      title: s.title,
+      status: s.status,
+      current_file_id: s.current_file_id || null,
+      revision_count: s.revision_count ?? 1,
+      is_best: s.is_best ?? false,
+      created_at: s.created_at || nowIso(),
+      updated_at: s.updated_at || nowIso()
+    }));
+
+    setSubmissionsTable((prev) => {
+      const withoutConf = prev.filter((s) => s.conference_id !== conferenceId);
+      return [...withoutConf, ...normalizedSubmissions];
+    });
+
+    const authorsBySubmission = await Promise.all(
+      normalizedSubmissions.map(async (s) => {
+        try {
+          const authors = await listSubmissionAuthors(s.id);
+          return { submissionId: s.id, authors: Array.isArray(authors) ? authors : [] };
+        } catch {
+          return { submissionId: s.id, authors: [] };
+        }
+      })
+    );
+
+    setSubmissionAuthorsTable((prev) => {
+      const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
+      const next = [];
+      authorsBySubmission.forEach(({ submissionId, authors }) => {
+        authors.forEach((a) => {
+          next.push({
+            id: a.id || uuid(),
+            submission_id: submissionId,
+            user_id: a.user_id || null,
+            name: a.name,
+            email: a.email,
+            affiliation: a.affiliation || '',
+            author_order: a.author_order ?? 1,
+            is_corresponding: Boolean(a.is_corresponding)
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
+  };
+
   const conferences = useMemo(
     () => conferencesTable.map((c) => ({
       id: c.id,
       title: c.title,
       description: c.description,
-      startDate: toDateInput(c.created_at),
+      startDate: toDateInput(c.start_date),
       endDate: toDateInput(c.submission_deadline),
-      isPublic: c.is_public ?? true,
+      isPublic: c.is_public ?? false,
       isSubmit: c.is_submit ?? true
     })),
     [conferencesTable]
@@ -255,9 +414,9 @@ export default function App() {
           ...conf,
           title: next.title,
           description: next.description,
-          created_at: toIsoDate(next.startDate) || conf.created_at,
+          start_date: toIsoDate(next.startDate) || conf.start_date,
           submission_deadline: toIsoDate(next.endDate) || conf.submission_deadline,
-          is_public: next.isPublic ?? conf.is_public ?? true,
+          is_public: next.isPublic ?? conf.is_public ?? false,
           is_submit: next.isSubmit ?? conf.is_submit ?? true
         };
       }));
@@ -634,8 +793,10 @@ export default function App() {
                 const created = await createConference({
                   title,
                   description: '',
+                  start_date: toIsoDate(startDate) || null,
                   submission_deadline: toIsoDate(endDate) || null,
-                  is_public: false
+                  is_public: false,
+                  is_submit: true
                 });
 
                 const newId = created?.id || uuid();
@@ -647,8 +808,8 @@ export default function App() {
                     title: created?.title ?? title,
                     description: created?.description ?? '',
                     is_public: created?.is_public ?? false,
-                    is_submit: true,
-                    created_at: toIsoDate(startDate) || nowIso(),
+                    is_submit: created?.is_submit ?? true,
+                    start_date: created?.start_date ?? (toIsoDate(startDate) || null),
                     submission_deadline: created?.submission_deadline ?? (toIsoDate(endDate) || nowIso())
                   }
                 ]);
@@ -666,7 +827,7 @@ export default function App() {
                     description: '',
                     is_public: false,
                     is_submit: true,
-                    created_at: toIsoDate(startDate) || nowIso(),
+                    start_date: toIsoDate(startDate) || null,
                     submission_deadline: toIsoDate(endDate) || nowIso()
                   }
                 ]);
@@ -731,7 +892,7 @@ export default function App() {
                 sections={curSections}
                 submissions={visibleSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.AUTHOR)}
-                setSubmissions={setSubmissions}
+                refreshSubmissions={refreshSubmissions}
               />
             )}
             {activeTab === 'main' && currentRole === ROLES.REVIEWER && (

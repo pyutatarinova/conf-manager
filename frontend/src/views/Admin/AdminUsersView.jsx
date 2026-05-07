@@ -8,30 +8,67 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
   const [inviteError, setInviteError] = useState('');
   const [inviteLink, setInviteLink] = useState('');
 
+  const isEmailValid = (value) => {
+    const email = String(value || '').trim();
+    return Boolean(email) && email.includes('@');
+  };
+
+  const createInviteSafe = async () => {
+    setInviteError('');
+    setInviteLink('');
+
+    if (!activeConfId) {
+      setInviteError('Сначала выберите конференцию.');
+      return;
+    }
+
+    if (!newUser.name.trim()) {
+      setInviteError('Введите ФИО.');
+      return;
+    }
+
+    if (!isEmailValid(newUser.email)) {
+      setInviteError('Введите корректный email (должен содержать @).');
+      return;
+    }
+
+    const role = newUser.role === 'chairman' ? 'chair' : 'reviewer';
+
+    try {
+      const invite = await createInvite(activeConfId, { email: newUser.email, role });
+      setUsers([...users, { id: Date.now(), conferenceId: activeConfId, ...newUser }]);
+      setNewUser({ name: '', email: '', position: '', role: 'reviewer', sectionId: '' });
+      if (invite?.invite_link) setInviteLink(invite.invite_link);
+    } catch (e) {
+      setInviteError(e?.message || 'Не удалось создать приглашение.');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in zoom-in-95">
       <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
         <h2 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-          <Users className="w-5 h-5 text-indigo-500" /> Регистрация сотрудников
+          <Users className="w-5 h-5 text-indigo-500" /> Регистрация персонала
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
           <input
             value={newUser.name}
             onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-            className="border border-slate-200 p-3 rounded-xl text-sm"
+            className="md:col-span-4 border border-slate-200 p-3 rounded-xl text-sm"
             placeholder="ФИО"
           />
           <input
+            type="email"
             value={newUser.email}
             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-            className="border border-slate-200 p-3 rounded-xl text-sm"
+            className="md:col-span-4 border border-slate-200 p-3 rounded-xl text-sm"
             placeholder="Email"
           />
           <select
             value={newUser.role}
             onChange={(e) => setNewUser({ ...newUser, role: e.target.value, sectionId: '' })}
-            className="border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold"
+            className="md:col-span-2 border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold"
           >
             <option value="reviewer">Рецензент</option>
             <option value="chairman">Председатель</option>
@@ -41,7 +78,7 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
             value={newUser.sectionId}
             onChange={(e) => setNewUser({ ...newUser, sectionId: e.target.value })}
             disabled={newUser.role !== 'chairman'}
-            className="border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold disabled:opacity-50"
+            className="md:col-span-2 border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold disabled:opacity-50"
             title={newUser.role !== 'chairman' ? 'Секция нужна только для председателя' : ''}
           >
             <option value="">{newUser.role === 'chairman' ? 'Секция председателя...' : 'Секция'}</option>
@@ -49,36 +86,10 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
           </select>
 
           <button
-            onClick={() => {
-              (async () => {
-                setInviteError('');
-                setInviteLink('');
-
-                if (!activeConfId) {
-                  setInviteError('Сначала выберите конференцию.');
-                  return;
-                }
-
-                if (!newUser.email) {
-                  setInviteError('Введите email.');
-                  return;
-                }
-
-                // Backend invite roles are 'chair' | 'reviewer'.
-                const role = newUser.role === 'chairman' ? 'chair' : 'reviewer';
-
-                try {
-                  const invite = await createInvite(activeConfId, { email: newUser.email, role });
-                  // UI still keeps a local row; actual user account appears after /auth/register-invite.
-                  setUsers([...users, { id: Date.now(), conferenceId: activeConfId, ...newUser }]);
-                  setNewUser({ name: '', email: '', position: '', role: 'reviewer', sectionId: '' });
-                } catch (e) {
-                  setInviteError(e?.message || 'Не удалось создать приглашение.');
-                }
-              })();
-            }}
+            onClick={() => void createInviteSafe()}
             disabled={newUser.role === 'chairman' && !newUser.sectionId}
-            className="md:col-span-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="md:col-span-12 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed py-3"
+            type="button"
           >
             Добавить в проект
           </button>
@@ -108,6 +119,7 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
             <button
               onClick={() => setUsers(users.filter((x) => x.id !== u.id))}
               className="text-slate-300 hover:text-red-500 transition-colors p-2"
+              type="button"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -117,3 +129,4 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
     </div>
   );
 }
+
