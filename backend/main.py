@@ -7,6 +7,7 @@ from api.dev import router as dev_router
 from api.files import router as files_router
 from api.notifications import router as notifications_router
 from api.submissions import router as submissions_router
+from api.reviews import router as reviews_router
 from auth.router import router as auth_router
 from database import Base, SessionLocal, engine
 from models.conference import Conference
@@ -18,6 +19,8 @@ from models.submission import Submission
 from models.submission_file import SubmissionFile
 from models.user import User
 from models.submission_author import SubmissionAuthor
+from models.review_assignment import ReviewAssignment
+from models.review import Review
 
 app = FastAPI(
     title="Conference Platform API",
@@ -43,6 +46,7 @@ app.include_router(dev_router, prefix="/dev", tags=["dev"])
 app.include_router(files_router, prefix="/files", tags=["files"])
 app.include_router(submissions_router, prefix="/submissions", tags=["submissions"])
 app.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
+app.include_router(reviews_router, prefix="/reviews", tags=["reviews"])
 
 @app.on_event("startup")
 def _create_tables_on_startup():
