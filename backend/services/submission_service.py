@@ -283,3 +283,45 @@ class SubmissionService:
         )
 
         return response, file
+    
+
+    def make_final_decision(self, db, submission_id, data, current_user):
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        role = (
+            db.query(ConferenceRole)
+            .filter(
+                ConferenceRole.user_id == current_user.id,
+                ConferenceRole.conference_id == submission.conference_id,
+                ConferenceRole.role.in_(["admin", "chair"])
+            )
+            .first()
+        )
+
+        if role is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Only conference admin or chair can make final decision"
+            )
+
+        allowed_decisions = [
+            "accepted",
+            "rejected",
+            "revision_required"
+        ]
+
+        if data.decision not in allowed_decisions:
+            raise HTTPException(
+                status_code=400,
+                detail="Decision must be accepted, rejected or revision_required"
+            )
+
+        submission.status = data.decision
+
+        db.commit()
+        db.refresh(submission)
+
+        return submission

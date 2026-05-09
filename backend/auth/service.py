@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
 from models.user import User
+from models.section import Section
 from auth.utils import hash_password, verify_password, create_access_token
 from models.conference_role import ConferenceRole
 from repositories.invite_repo import InviteRepository
@@ -77,6 +78,17 @@ def register_by_invite(db: Session, data):
     )
 
     db.add(conference_role)
+
+    if invite.role == "chair" and invite.section_id is not None:
+        section = (
+            db.query(Section)
+            .filter(Section.id == invite.section_id)
+            .first()
+        )
+
+        if section:
+            section.chair_id = user.id
+        
     invite.is_used = True
 
     db.commit()

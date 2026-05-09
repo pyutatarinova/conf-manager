@@ -13,6 +13,7 @@ from schemas.submission import SubmissionCreate
 from schemas.submission_file import AttachThesisRequest
 from services.submission_service import SubmissionService
 from schemas.submission_author import SubmissionAuthorCreate
+from schemas.submission_decision import SubmissionDecisionCreate
 from services.submission_author_service import SubmissionAuthorService
 
 
@@ -202,4 +203,63 @@ def download_submission_file_direct(
         }
     )
 
+@router.post("/{submission_id}/decision")
+def make_submission_decision(
+    submission_id: UUID,
+    data: SubmissionDecisionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    submission = submission_service.make_final_decision(
+        db=db,
+        submission_id=submission_id,
+        data=data,
+        current_user=current_user
+    )
 
+    return {
+        "id": str(submission.id),
+        "title": submission.title,
+        "status": submission.status,
+        "conference_id": str(submission.conference_id),
+        "section_id": str(submission.section_id)
+    }
+
+@router.get("/chair/my")
+def list_my_section_submissions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from models.section import Section
+    from models.submission import Submission
+
+    sections = (
+        db.query(Section)
+        .filter(Section.chair_id == current_user.id)
+        .all()
+    )
+
+    if not sections:
+        return []
+
+    section_ids = [section.id for section in sections]
+
+    submissions = (
+        db.query(Submission)
+        .filter(Submission.section_id.in_(section_ids))
+        .all()
+    )
+
+    return [
+        {
+            "id": str(submission.id),
+            "conference_id": str(submission.conference_id),
+            "section_id": str(submission.section_id),
+            "title": submission.title,
+            "status": submission.status,
+            "revision_count": submission.revision_count,
+            "created_at": submission.created_at,
+            "updated_at": submission.updated_at
+        }
+        for submission in submissions
+    ]

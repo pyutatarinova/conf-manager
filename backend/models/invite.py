@@ -18,6 +18,12 @@ class Invite(Base):
         nullable=False
     )
 
+    section_id = Column(
+    UUID(as_uuid=True),
+    ForeignKey("sections.id", ondelete="SET NULL"),
+    nullable=True
+    )
+
     email = Column(Text, nullable=False)
     role = Column(Text, nullable=False)
 
