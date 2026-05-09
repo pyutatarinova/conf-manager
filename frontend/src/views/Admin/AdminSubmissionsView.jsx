@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { FileDown, Plus, Trash2, List, FileText, Pencil } from 'lucide-react';
 
 import { getAuthorsString } from '../../utils/helpers';
 import StatusBadge from '../../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../../components/ui/SubmissionDetailsModal';
 import { createSection, updateSection } from '../../api/conferences';
+import { downloadSubmissionFileDirect } from '../../api/submissions';
+import { triggerBrowserDownload } from '../../utils/download';
 
 export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, updateSubmission }) {
   const [newSecName, setNewSecName] = useState('');
@@ -12,11 +14,24 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
   const [sectionDescDraft, setSectionDescDraft] = useState('');
   const [detailsId, setDetailsId] = useState(null);
   const [sectionError, setSectionError] = useState('');
+  const [downloadBusy, setDownloadBusy] = useState({});
 
   const detailsSubmission = useMemo(
     () => (submissions || []).find((s) => s.id === detailsId) || null,
     [submissions, detailsId]
   );
+
+  const download = async (submissionId, fileType) => {
+    if (!submissionId) return;
+    const key = `${submissionId}:${fileType}`;
+    setDownloadBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submissionId, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [key]: false }));
+    }
+  };
 
   const addSection = async () => {
     const name = newSecName.trim();
@@ -148,15 +163,19 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                     title={`Скачать работу: ${sub.fileName}`}
                     type="button"
+                    onClick={() => download(sub.id, 'article')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:article`])}
                   >
                     <FileDown className="w-4 h-4" /> <span className="text-xs font-bold">Работа</span>
                   </button>
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать тезисы: ${sub.thesisFileName || 'thesis.pdf'}`}
+                    title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
                     type="button"
+                    onClick={() => download(sub.id, 'abstract')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
                   >
-                    <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезисы</span>
+                    <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезис</span>
                   </button>
                 </div>
               </div>
@@ -197,3 +216,4 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
     </div>
   );
 }
+

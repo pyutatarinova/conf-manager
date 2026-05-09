@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { X, FileDown, FileText } from 'lucide-react';
 
 import StatusBadge from './StatusBadge';
 import { getAuthorsString } from '../../utils/helpers';
+import { downloadSubmissionFileDirect, listSubmissionFiles } from '../../api/submissions';
+import { triggerBrowserDownload } from '../../utils/download';
 
 const STATUS_OPTIONS = [
   { value: 'reviewing', label: 'На рецензировании' },
@@ -23,12 +25,51 @@ export default function SubmissionDetailsModal({
 }) {
   const [statusDraft, setStatusDraft] = useState('reviewing');
   const [reviewDraft, setReviewDraft] = useState('');
+  const [filesInfo, setFilesInfo] = useState({ loading: false, error: '', latestVersion: null });
+  const [downloadBusy, setDownloadBusy] = useState({ article: false, abstract: false });
 
   useEffect(() => {
     if (!isOpen || !submission) return;
     setStatusDraft(submission.status || 'reviewing');
     setReviewDraft(submission.reviewText || '');
   }, [isOpen, submission]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadFiles() {
+      if (!isOpen || !submission?.id) return;
+      setFilesInfo({ loading: true, error: '', latestVersion: null });
+      try {
+        const files = await listSubmissionFiles(submission.id);
+        if (!active) return;
+        const latestVersion = Array.isArray(files) && files.length
+          ? Math.max(...files.map((f) => Number(f?.version) || 0))
+          : null;
+        setFilesInfo({ loading: false, error: '', latestVersion });
+      } catch (e) {
+        if (!active) return;
+        setFilesInfo({ loading: false, error: e?.message || 'Не удалось загрузить список файлов.', latestVersion: null });
+      }
+    }
+
+    loadFiles();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, submission?.id]);
+
+  const download = async (fileType) => {
+    if (!submission?.id) return;
+    setDownloadBusy((prev) => ({ ...prev, [fileType]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submission.id, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [fileType]: false }));
+    }
+  };
 
   const sectionName = useMemo(
     () => (sections || []).find((s) => s.id === submission?.sectionId)?.name || '—',
@@ -113,19 +154,26 @@ export default function SubmissionDetailsModal({
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-sm"
                   title={`Скачать работу: ${submission.fileName}`}
                   type="button"
+                  onClick={() => download('article')}
+                  disabled={downloadBusy.article}
                 >
                   <FileDown className="w-4 h-4" /> Работа
                 </button>
                 <button
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-sm"
-                  title={`Скачать тезисы: ${submission.thesisFileName || 'thesis.pdf'}`}
+                  title={`Скачать тезис: ${submission.thesisFileName || 'thesis.pdf'}`}
                   type="button"
+                  onClick={() => download('abstract')}
+                  disabled={downloadBusy.abstract}
                 >
-                  <FileText className="w-4 h-4" /> Тезисы
+                  <FileText className="w-4 h-4" /> Тезис
                 </button>
               </div>
+              {filesInfo.error && (
+                <p className="text-xs text-rose-600 font-semibold">{filesInfo.error}</p>
+              )}
               <p className="text-xs text-slate-500">
-                Версия: <span className="font-bold text-slate-700">№{(submission.revisionCount ?? 0) + 1}</span>
+                Версия: <span className="font-bold text-slate-700">№{filesInfo.latestVersion ?? ((submission.revisionCount ?? 0) + 1)}</span>
               </p>
             </div>
 
@@ -199,4 +247,5 @@ export default function SubmissionDetailsModal({
     </div>
   );
 }
+
 

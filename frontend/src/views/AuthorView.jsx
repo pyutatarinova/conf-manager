@@ -8,7 +8,8 @@ import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
 import { uploadFile } from '../api/files';
-import { addSubmissionAuthor, createSubmission } from '../api/submissions';
+import { addSubmissionAuthor, createSubmission, downloadSubmissionFileDirect } from '../api/submissions';
+import { triggerBrowserDownload } from '../utils/download';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.docx';
 
@@ -27,6 +28,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
   const [revisionUploads, setRevisionUploads] = useState({});
   const [submitError, setSubmitError] = useState('');
   const [revisionErrors, setRevisionErrors] = useState({});
+  const [downloadBusy, setDownloadBusy] = useState({});
 
   const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '', position: '' }]);
   const removeCoAuthor = (idx) => setCoAuthors(coAuthors.filter((_, i) => i !== idx));
@@ -124,6 +126,18 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
         [field]: file || null
       }
     }));
+  };
+
+  const download = async (submissionId, fileType, fallbackName) => {
+    if (!submissionId) return;
+    const key = `${submissionId}:${fileType}`;
+    setDownloadBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submissionId, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const uploadRevisionFiles = (sub) => {
@@ -279,8 +293,24 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
 
               <div className="flex flex-wrap items-center gap-4 text-[10px] font-black uppercase tracking-widest text-indigo-400">
                 <div className="flex items-center gap-1.5"><List className="w-3.5 h-3.5" /> {sections.find((s) => s.id === sub.sectionId)?.name}</div>
-                <div className="flex items-center gap-1.5"><FileDown className="w-3.5 h-3.5" /> {sub.fileName}</div>
-                <div className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> {sub.thesisFileName || 'thesis.pdf'}</div>
+                <button
+                  type="button"
+                  onClick={() => download(sub.id, 'article')}
+                  disabled={Boolean(downloadBusy[`${sub.id}:article`])}
+                  className="inline-flex items-center gap-1.5 hover:text-indigo-600"
+                  title={`Скачать работу: ${sub.fileName}`}
+                >
+                  <FileDown className="w-3.5 h-3.5" /> Работа
+                </button>
+                <button
+                  type="button"
+                  onClick={() => download(sub.id, 'abstract')}
+                  disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
+                  className="inline-flex items-center gap-1.5 hover:text-indigo-600"
+                  title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                >
+                  <FileText className="w-3.5 h-3.5" /> Тезис
+                </button>
               </div>
 
               {sub.reviewText && (

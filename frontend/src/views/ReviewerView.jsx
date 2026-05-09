@@ -1,13 +1,28 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { CheckCircle, FileDown, Eye, FileText } from 'lucide-react';
 
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
+import { downloadSubmissionFileDirect } from '../api/submissions';
+import { triggerBrowserDownload } from '../utils/download';
 
 export default function ReviewerView({ submissions, updateSubmission, currentReviewerId }) {
   const [activeReviewId, setActiveReviewId] = useState(null);
   const [reviewInput, setReviewInput] = useState('');
   const [statusInput, setStatusInput] = useState('reviewing');
+  const [downloadBusy, setDownloadBusy] = useState({});
+
+  const download = async (submissionId, fileType) => {
+    if (!submissionId) return;
+    const key = `${submissionId}:${fileType}`;
+    setDownloadBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submissionId, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [key]: false }));
+    }
+  };
 
   const handleSave = (sub) => {
     if (sub.reviewerLocked || sub.chairmanLocked) return;
@@ -60,6 +75,9 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                     title={`Скачать файл: ${sub.fileName}`}
+                    type="button"
+                    onClick={() => download(sub.id, 'article')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:article`])}
                   >
                     <FileDown className="w-5 h-5" />
                     <span className="text-xs font-bold">Работа</span>
@@ -67,9 +85,12 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                     title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                    type="button"
+                    onClick={() => download(sub.id, 'abstract')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
                   >
                     <FileText className="w-5 h-5" />
-                    <span className="text-xs font-bold">Тезисы</span>
+                    <span className="text-xs font-bold">Тезис</span>
                   </button>
                   {!isLocked && activeReviewId !== sub.id && (
                     <button
@@ -151,3 +172,4 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
     </div>
   );
 }
+

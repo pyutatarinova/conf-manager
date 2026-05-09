@@ -105,3 +105,45 @@ export async function apiRequest(path, options = {}) {
   return response.json();
 }
 
+export async function apiFetch(path, options = {}) {
+  const {
+    method = 'GET',
+    body,
+    headers = {},
+    token = getAccessToken(),
+    signal
+  } = options;
+
+  const baseUrl = resolveBaseUrl();
+  const urlPath = String(path || '').startsWith('/') ? path : `/${path}`;
+  const url = `${baseUrl}${urlPath}`;
+
+  const requestHeaders = {
+    ...headers
+  };
+
+  if (token) requestHeaders.Authorization = `Bearer ${token}`;
+
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (!isFormData && body !== undefined && body !== null) {
+    requestHeaders['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers: requestHeaders,
+    body: body === undefined || body === null
+      ? undefined
+      : (isFormData ? body : JSON.stringify(body)),
+    signal
+  });
+
+  if (!response.ok) {
+    const message = await readErrorBody(response);
+    const error = new Error(message || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response;
+}
