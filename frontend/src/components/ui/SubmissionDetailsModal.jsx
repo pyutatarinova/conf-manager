@@ -152,7 +152,7 @@ export default function SubmissionDetailsModal({
               <div className="flex flex-wrap gap-2">
                 <button
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-sm"
-                  title={`Скачать работу: ${submission.fileName}`}
+                  title={`Скачать работу`}
                   type="button"
                   onClick={() => download('article')}
                   disabled={downloadBusy.article}
@@ -161,7 +161,7 @@ export default function SubmissionDetailsModal({
                 </button>
                 <button
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 shadow-sm"
-                  title={`Скачать тезис: ${submission.thesisFileName || 'thesis.pdf'}`}
+                  title={`Скачать тезис`}
                   type="button"
                   onClick={() => download('abstract')}
                   disabled={downloadBusy.abstract}

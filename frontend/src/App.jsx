@@ -18,6 +18,7 @@ import { ROLES } from './constants';
 import Sidebar from './components/layout/Sidebar';
 
 import AuthView from './components/common/AuthView';
+import InviteRegisterView from './components/common/InviteRegisterView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
 import { clearAccessToken, getAccessToken } from './api/client';
 import { createConference, listConferences, listSections } from './api/conferences';
@@ -57,6 +58,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('main');
   const [conferencesLoading, setConferencesLoading] = useState(false);
   const [conferencesError, setConferencesError] = useState('');
+  const [authScreen, setAuthScreen] = useState('auth');
 
   const [usersTable, setUsersTable] = useState(INITIAL_USERS);
   const [conferencesTable, setConferencesTable] = useState(INITIAL_CONFERENCES);
@@ -766,7 +768,28 @@ export default function App() {
   }, [currentRole]);
 
   if (!isAuthenticated) {
-    return <AuthView onAuth={() => { setIsAuthenticated(true); setIsConferenceSelected(false); }} />;
+    if (authScreen === 'invite') {
+      return (
+        <InviteRegisterView
+          onAuth={(token) => {
+            if (token) setIsAuthenticated(true);
+            setIsConferenceSelected(false);
+            setAuthScreen('auth');
+          }}
+          onBack={() => setAuthScreen('auth')}
+        />
+      );
+    }
+
+    return (
+      <AuthView
+        onAuth={() => {
+          setIsAuthenticated(true);
+          setIsConferenceSelected(false);
+        }}
+        onInviteRegister={() => setAuthScreen('invite')}
+      />
+    );
   }
 
   if (!isConferenceSelected) {

@@ -161,7 +161,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                 <div className="flex flex-wrap gap-2 mt-3">
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать работу: ${sub.fileName}`}
+                    title={`Скачать работу`}
                     type="button"
                     onClick={() => download(sub.id, 'article')}
                     disabled={Boolean(downloadBusy[`${sub.id}:article`])}
@@ -170,7 +170,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                   </button>
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                    title={`Скачать тезис`}
                     type="button"
                     onClick={() => download(sub.id, 'abstract')}
                     disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}

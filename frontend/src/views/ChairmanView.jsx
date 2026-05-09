@@ -127,7 +127,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                       <div className="flex items-center gap-2">
                         <button
                           className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
-                          title={`Скачать работу: ${sub.fileName}`}
+                          title={`Скачать работу`}
                           type="button"
                           onClick={() => download(sub.id, 'article')}
                           disabled={Boolean(downloadBusy[`${sub.id}:article`])}
@@ -136,7 +136,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                         </button>
                         <button
                           className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
-                          title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                          title={`Скачать тезис`}
                           type="button"
                           onClick={() => download(sub.id, 'abstract')}
                           disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}

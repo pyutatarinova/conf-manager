@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Award } from 'lucide-react';
 
-import { login, register } from '../../api/auth';
+import { login, registerInvite } from '../../api/auth';
 
 const hasLetter = (value) => /[A-Za-zА-Яа-я]/.test(String(value || ''));
 
-export default function AuthView({ onAuth, onInviteRegister }) {
-  const [isLogin, setIsLogin] = useState(true);
+export default function InviteRegisterView({ onAuth, onBack }) {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,23 +18,26 @@ export default function AuthView({ onAuth, onInviteRegister }) {
     setIsSubmitting(true);
 
     try {
-      if (isLogin) {
-        const token = await login({ email, password });
-        onAuth?.(token);
-        return;
-      }
-
       const value = String(password || '');
       if (value.length < 6 || !hasLetter(value)) {
         setError('Пароль: минимум 6 символов и хотя бы одна буква.');
         return;
       }
 
-      await register({ name, email, password });
-      const token = await login({ email, password });
-      onAuth?.(token);
+      const data = await registerInvite({ name, password, token });
+      const email = data?.email;
+      if (!email) throw new Error('Не удалось получить email из приглашения.');
+
+      const accessToken = data?.access_token;
+      if (accessToken) {
+        onAuth?.(accessToken);
+        return;
+      }
+
+      const loginToken = await login({ email, password });
+      onAuth?.(loginToken);
     } catch (err) {
-      setError(err?.message || 'Ошибка авторизации');
+      setError(err?.message || 'Ошибка регистрации по приглашению');
     } finally {
       setIsSubmitting(false);
     }
@@ -48,30 +50,28 @@ export default function AuthView({ onAuth, onInviteRegister }) {
           <div className="bg-indigo-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Award className="w-8 h-8 text-indigo-600" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Менеджер конференций</h1>
-          <p className="text-slate-400 mt-2 font-medium">{isLogin ? 'Личный кабинет' : 'Регистрация участника'}</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Регистрация по приглашению</h1>
+          <p className="text-slate-400 mt-2 font-medium">Введите ФИО, токен и пароль</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <input
-              required
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-              placeholder="ФИО"
-              disabled={isSubmitting}
-            />
-          )}
+          <input
+            required
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            placeholder="ФИО"
+            disabled={isSubmitting}
+          />
 
           <input
             required
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
             className="w-full border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-            placeholder="Email"
+            placeholder="Токен приглашения"
             disabled={isSubmitting}
           />
 
@@ -96,35 +96,19 @@ export default function AuthView({ onAuth, onInviteRegister }) {
             disabled={isSubmitting}
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-100 active:scale-95"
           >
-            {isLogin ? 'Войти в систему' : 'Зарегистрироваться'}
+            Зарегистрироваться
           </button>
         </form>
 
         <button
           type="button"
-          onClick={() => {
-            setIsLogin(!isLogin);
-            setError('');
-          }}
+          onClick={() => onBack?.()}
           className="w-full mt-6 text-sm text-slate-400 hover:text-indigo-600 font-bold transition-colors"
           disabled={isSubmitting}
         >
-          {isLogin ? 'У вас ещё нет аккаунта?' : 'Уже зарегистрированы? Войти'}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setError('');
-            onInviteRegister?.();
-          }}
-          className="w-full mt-3 text-sm text-slate-400 hover:text-indigo-600 font-bold transition-colors"
-          disabled={isSubmitting}
-        >
-          Регистрация по приглашению
+          Вход
         </button>
       </div>
     </div>
   );
 }
-

@@ -154,7 +154,6 @@ def create_invite(
         "email": invite.email,
         "role": invite.role,
         "token": invite.token,
-        "invite_link": f"http://localhost:3000/register/invite?token={invite.token}",
     }
 
 
@@ -229,4 +228,3 @@ def update_section(
         "name": section.name,
         "description": section.description,
     }
-

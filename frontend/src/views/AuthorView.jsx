@@ -30,7 +30,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
   const [revisionErrors, setRevisionErrors] = useState({});
   const [downloadBusy, setDownloadBusy] = useState({});
 
-  const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '', position: '' }]);
+  const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '' }]);
   const removeCoAuthor = (idx) => setCoAuthors(coAuthors.filter((_, i) => i !== idx));
 
   const isEmailValid = (value) => {
@@ -81,7 +81,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
         title: fd.get('theme'),
         article_file_id: fileId,
         abstract_file_id: thesisFileId,
-        affiliation: fd.get('position') || currentUser?.affiliation || null
+        affiliation: currentUser?.affiliation || null
       });
 
       const submissionId = created?.id;
@@ -90,7 +90,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
           .map((a, idx) => ({
             name: String(a?.name || '').trim(),
             email: String(a?.email || '').trim(),
-            affiliation: String(a?.position || '').trim() || null,
+            affiliation: null,
             author_order: idx + 2,
             is_corresponding: false
           }))
@@ -215,7 +215,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
 
       {isSubmitting && (
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl shadow-xl border border-indigo-50 space-y-6 animate-in zoom-in-95 duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Основной автор (ФИО)</label>
               <input required name="fullName" defaultValue={currentUser?.name || ''} className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Иванов И.И." />
@@ -223,10 +223,6 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Email</label>
               <input value={currentUser?.email || ''} readOnly className="w-full border border-slate-200 p-3.5 rounded-xl outline-none bg-slate-50 text-slate-600" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Должность</label>
-              <input name="position" defaultValue={currentUser?.affiliation || ''} className="w-full border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Аспирант" />
             </div>
           </div>
 
@@ -239,9 +235,8 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
             </div>
             {coAuthors.map((ca, i) => (
               <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center animate-in slide-in-from-left-2">
-                <input required className="md:col-span-4 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={(e) => { const n = [...coAuthors]; n[i].name = e.target.value; setCoAuthors(n); }} />
-                <input required type="email" className="md:col-span-4 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={(e) => { const n = [...coAuthors]; n[i].email = e.target.value; setCoAuthors(n); }} />
-                <input className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Должность" value={ca.position} onChange={(e) => { const n = [...coAuthors]; n[i].position = e.target.value; setCoAuthors(n); }} />
+                <input required className="md:col-span-5 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={(e) => { const n = [...coAuthors]; n[i].name = e.target.value; setCoAuthors(n); }} />
+                <input required type="email" className="md:col-span-6 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={(e) => { const n = [...coAuthors]; n[i].email = e.target.value; setCoAuthors(n); }} />
                 <button type="button" onClick={() => removeCoAuthor(i)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
               </div>
             ))}
@@ -298,7 +293,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
                   onClick={() => download(sub.id, 'article')}
                   disabled={Boolean(downloadBusy[`${sub.id}:article`])}
                   className="inline-flex items-center gap-1.5 hover:text-indigo-600"
-                  title={`Скачать работу: ${sub.fileName}`}
+                  title={`Скачать работу`}
                 >
                   <FileDown className="w-3.5 h-3.5" /> Работа
                 </button>
@@ -307,7 +302,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
                   onClick={() => download(sub.id, 'abstract')}
                   disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
                   className="inline-flex items-center gap-1.5 hover:text-indigo-600"
-                  title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                  title={`Скачать тезис`}
                 >
                   <FileText className="w-3.5 h-3.5" /> Тезис
                 </button>

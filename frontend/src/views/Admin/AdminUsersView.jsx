@@ -4,9 +4,9 @@ import { Users, Trash2 } from 'lucide-react';
 import { createInvite } from '../../api/conferences';
 
 export default function AdminUsersView({ activeConfId, users, setUsers, submissions, sections }) {
-  const [newUser, setNewUser] = useState({ name: '', email: '', position: '', role: 'reviewer', sectionId: '' });
+  const [newUser, setNewUser] = useState({ email: '', position: '', role: 'reviewer', sectionId: '' });
   const [inviteError, setInviteError] = useState('');
-  const [inviteLink, setInviteLink] = useState('');
+  const [inviteCreated, setInviteCreated] = useState(false);
 
   const isEmailValid = (value) => {
     const email = String(value || '').trim();
@@ -15,14 +15,14 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
 
   const createInviteSafe = async () => {
     setInviteError('');
-    setInviteLink('');
+    setInviteCreated(false);
 
     if (!activeConfId) {
       setInviteError('Сначала выберите конференцию.');
       return;
     }
 
-    if (!newUser.name.trim()) {
+    if (false) {
       setInviteError('Введите ФИО.');
       return;
     }
@@ -35,10 +35,10 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
     const role = newUser.role === 'chairman' ? 'chair' : 'reviewer';
 
     try {
-      const invite = await createInvite(activeConfId, { email: newUser.email, role });
-      setUsers([...users, { id: Date.now(), conferenceId: activeConfId, ...newUser }]);
-      setNewUser({ name: '', email: '', position: '', role: 'reviewer', sectionId: '' });
-      if (invite?.invite_link) setInviteLink(invite.invite_link);
+      await createInvite(activeConfId, { email: newUser.email, role });
+      setUsers([...users, { id: Date.now(), conferenceId: activeConfId, name: '', ...newUser }]);
+      setNewUser({ email: '', position: '', role: 'reviewer', sectionId: '' });
+      setInviteCreated(true);
     } catch (e) {
       setInviteError(e?.message || 'Не удалось создать приглашение.');
     }
@@ -53,16 +53,16 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
           <input
-            value={newUser.name}
-            onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-            className="md:col-span-4 border border-slate-200 p-3 rounded-xl text-sm"
+            value=""
+            onChange={() => {}}
+            className="hidden"
             placeholder="ФИО"
           />
           <input
             type="email"
             value={newUser.email}
             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-            className="md:col-span-4 border border-slate-200 p-3 rounded-xl text-sm"
+            className="md:col-span-7 border border-slate-200 p-3 rounded-xl text-sm"
             placeholder="Email"
           />
           <select
@@ -78,10 +78,10 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
             value={newUser.sectionId}
             onChange={(e) => setNewUser({ ...newUser, sectionId: e.target.value })}
             disabled={newUser.role !== 'chairman'}
-            className="md:col-span-2 border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold disabled:opacity-50"
+            className="md:col-span-3 border border-slate-200 p-3 rounded-xl text-sm bg-white font-bold disabled:opacity-50"
             title={newUser.role !== 'chairman' ? 'Секция нужна только для председателя' : ''}
           >
-            <option value="">{newUser.role === 'chairman' ? 'Секция председателя...' : 'Секция'}</option>
+            <option value="">{newUser.role === 'chairman' ? 'Секция' : 'Секция'}</option>
             {(sections || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
 
@@ -96,7 +96,7 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
         </div>
 
         {inviteError && <p className="mt-3 text-sm font-semibold text-red-600">{inviteError}</p>}
-        {inviteLink && <p className="mt-3 text-sm font-semibold text-emerald-700 break-all">{inviteLink}</p>}
+        {inviteCreated && <p className="mt-3 text-sm font-semibold text-emerald-700">Приглашение отправлено на почту.</p>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -129,4 +129,3 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
     </div>
   );
 }
-

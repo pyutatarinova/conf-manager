@@ -74,7 +74,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                 <div className="flex gap-2">
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать файл: ${sub.fileName}`}
+                    title={`Скачать работу`}
                     type="button"
                     onClick={() => download(sub.id, 'article')}
                     disabled={Boolean(downloadBusy[`${sub.id}:article`])}
@@ -84,7 +84,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                   </button>
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать тезис: ${sub.thesisFileName || 'thesis.pdf'}`}
+                    title={`Скачать тезис`}
                     type="button"
                     onClick={() => download(sub.id, 'abstract')}
                     disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
