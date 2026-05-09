@@ -16,12 +16,12 @@ conference_role_repo = ConferenceRoleRepository()
 def register_user(db: Session, data):
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
-        raise Exception("Пользователь с таким email уже зарегистрирован. Войдите")
+        raise Exception("Пользователь с таким email уже зарегистрирован. Войдите в систему.")
 
     user = User(
         name=data.name,
         email=data.email,
-        password_hash=hash_password(data.password)
+        password_hash=hash_password(data.password),
     )
 
     db.add(user)
@@ -48,7 +48,7 @@ def register_by_invite(db: Session, data):
     invite = invite_repo.get_by_token(db, data.token)
 
     if invite is None:
-        raise HTTPException(status_code=400, detail="Ошибка добавления рользователя")
+        raise HTTPException(status_code=400, detail="Некорректное приглашение")
 
     if invite.is_used:
         raise HTTPException(status_code=400, detail="Приглашение уже использовано")
@@ -57,13 +57,13 @@ def register_by_invite(db: Session, data):
     if existing_user:
         raise HTTPException(
             status_code=400,
-            detail="Пользователь с таким email уже зарегистрирован"
+            detail="Пользователь с таким email уже зарегистрирован",
         )
 
     user = User(
         name=data.name,
         email=invite.email,
-        password_hash=hash_password(data.password)
+        password_hash=hash_password(data.password),
     )
 
     db.add(user)
@@ -73,7 +73,7 @@ def register_by_invite(db: Session, data):
     conference_role = ConferenceRole(
         user_id=user.id,
         conference_id=invite.conference_id,
-        role=invite.role
+        role=invite.role,
     )
 
     db.add(conference_role)

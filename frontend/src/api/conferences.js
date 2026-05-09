@@ -1,9 +1,16 @@
 import { apiRequest } from './client';
 
-export async function createConference({ title, description = null, submission_deadline = null, is_public = false }) {
+export async function createConference({
+  title,
+  description = null,
+  start_date = null,
+  submission_deadline = null,
+  is_public = false,
+  is_submit = true
+}) {
   return apiRequest('/conferences/', {
     method: 'POST',
-    body: { title, description, submission_deadline, is_public }
+    body: { title, description, start_date, submission_deadline, is_public, is_submit }
   });
 }
 
@@ -19,5 +26,30 @@ export async function createInvite(conferenceId, { email, role }) {
   return apiRequest(`/conferences/${conferenceId}/invites`, {
     method: 'POST',
     body: { email, role }
+  });
+}
+
+export async function createSection(conferenceId, { name, description = null }) {
+  return apiRequest(`/conferences/${conferenceId}/sections`, {
+    method: 'POST',
+    body: { name, description }
+  });
+}
+
+export async function listSections(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/sections`, { method: 'GET' });
+}
+
+export async function updateSection(conferenceId, sectionId, { name, description }) {
+  return apiRequest(`/conferences/${conferenceId}/sections/${sectionId}`, {
+    method: 'PUT',
+    body: { name, description }
+  });
+}
+
+export async function updateConference(conferenceId, { title, description, start_date, submission_deadline, is_public, is_submit }) {
+  return apiRequest(`/conferences/${conferenceId}`, {
+    method: 'PUT',
+    body: { title, description, start_date, submission_deadline, is_public, is_submit }
   });
 }

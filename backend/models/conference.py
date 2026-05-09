@@ -14,8 +14,10 @@ class Conference(Base):
     title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
 
+    start_date = Column(DateTime, nullable=True)
     submission_deadline = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     is_public = Column(Boolean, default=False)
+    is_submit = Column(Boolean, default=True)

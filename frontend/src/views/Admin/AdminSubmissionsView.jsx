@@ -4,22 +4,39 @@ import { FileDown, Plus, Trash2, List, FileText, Pencil } from 'lucide-react';
 import { getAuthorsString } from '../../utils/helpers';
 import StatusBadge from '../../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../../components/ui/SubmissionDetailsModal';
+import { createSection, updateSection } from '../../api/conferences';
 
 export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, updateSubmission }) {
   const [newSecName, setNewSecName] = useState('');
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [sectionDescDraft, setSectionDescDraft] = useState('');
   const [detailsId, setDetailsId] = useState(null);
+  const [sectionError, setSectionError] = useState('');
 
   const detailsSubmission = useMemo(
     () => (submissions || []).find((s) => s.id === detailsId) || null,
     [submissions, detailsId]
   );
 
-  const addSection = () => {
-    if (!newSecName.trim()) return;
-    setSections([...sections, { id: Date.now(), conferenceId: activeConfId, name: newSecName.trim(), description: '' }]);
-    setNewSecName('');
+  const addSection = async () => {
+    const name = newSecName.trim();
+    if (!name || !activeConfId) return;
+    setSectionError('');
+    try {
+      const created = await createSection(activeConfId, { name, description: '' });
+      setSections([
+        ...sections,
+        {
+          id: created?.id || Date.now(),
+          conferenceId: created?.conference_id || activeConfId,
+          name: created?.name || name,
+          description: created?.description || ''
+        }
+      ]);
+      setNewSecName('');
+    } catch (e) {
+      setSectionError(e?.message || 'Не удалось создать секцию.');
+    }
   };
 
   const startEditSection = (section) => {
@@ -29,6 +46,10 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
 
   const saveSectionDesc = () => {
     if (!editingSectionId) return;
+    const target = sections.find((s) => s.id === editingSectionId);
+    if (target?.id && activeConfId) {
+      void updateSection(activeConfId, target.id, { name: target.name, description: sectionDescDraft }).catch(() => {});
+    }
     setSections(sections.map((s) => (s.id === editingSectionId ? { ...s, description: sectionDescDraft } : s)));
     setEditingSectionId(null);
     setSectionDescDraft('');
@@ -50,10 +71,11 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
         </h2>
         <div className="flex gap-2">
           <input value={newSecName} onChange={(e) => setNewSecName(e.target.value)} className="flex-1 border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Название новой секции..." />
-          <button onClick={addSection} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all hover:bg-indigo-700">
+          <button onClick={addSection} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all hover:bg-indigo-700" type="button">
             <Plus className="w-4 h-4" /> Добавить
           </button>
         </div>
+        {sectionError && <p className="text-sm text-red-600 font-semibold">{sectionError}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           {sections.map((s) => {
@@ -175,4 +197,3 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
     </div>
   );
 }
-

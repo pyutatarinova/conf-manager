@@ -8,7 +8,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
 import { uploadFile } from '../api/files';
-import { attachThesis, createSubmission } from '../api/submissions';
+import { addSubmissionAuthor, createSubmission } from '../api/submissions';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.docx';
 
@@ -20,7 +20,7 @@ const isSupportedFile = (file) => {
 
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
 
-export default function AuthorView({ activeConfId, currentUser, sendEmail, isSubmitOpen, sections, submissions, setSubmissions, updateSubmission }) {
+export default function AuthorView({ activeConfId, currentUser, sendEmail, isSubmitOpen, sections, submissions, refreshSubmissions, updateSubmission }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coAuthors, setCoAuthors] = useState([]);
   const [expandedReview, setExpandedReview] = useState(null);
@@ -30,6 +30,11 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
 
   const addCoAuthor = () => setCoAuthors([...coAuthors, { name: '', email: '', position: '' }]);
   const removeCoAuthor = (idx) => setCoAuthors(coAuthors.filter((_, i) => i !== idx));
+
+  const isEmailValid = (value) => {
+    const email = String(value || '').trim();
+    return Boolean(email) && email.includes('@');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,55 +51,53 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
     const fd = new FormData(e.target);
     const paperFile = fd.get('file');
     const thesisFile = fd.get('thesisFile');
+    const sectionId = fd.get('sectionId');
 
     if (!isSupportedFile(paperFile) || !isSupportedFile(thesisFile)) {
       setSubmitError('Допустимы только файлы PDF и DOCX.');
+      return;
+    }
+    if (!isUuid(sectionId)) {
+      setSubmitError('Выберите секцию.');
       return;
     }
 
     setSubmitError('');
 
     try {
-      // Backend submission currently accepts one file_id; we bind it to the main paper file.
       const uploaded = await uploadFile(paperFile);
       const fileId = uploaded?.id;
       if (!fileId) throw new Error('Не удалось загрузить файл.');
 
       const uploadedThesis = await uploadFile(thesisFile);
       const thesisFileId = uploadedThesis?.id;
-      if (!thesisFileId) throw new Error('Не удалось загрузить файл тезиса.');
+      if (!thesisFileId) throw new Error('Не удалось загрузить файл тезисов.');
 
       const created = await createSubmission({
         conference_id: activeConfId,
-        section_id: isUuid(fd.get('sectionId')) ? fd.get('sectionId') : null,
+        section_id: sectionId,
         title: fd.get('theme'),
-        file_id: fileId
+        article_file_id: fileId,
+        abstract_file_id: thesisFileId,
+        affiliation: fd.get('position') || currentUser?.affiliation || null
       });
 
       const submissionId = created?.id;
-      if (submissionId) {
-        await attachThesis(submissionId, thesisFileId);
+      if (submissionId && Array.isArray(coAuthors) && coAuthors.length) {
+        const tasks = coAuthors
+          .map((a, idx) => ({
+            name: String(a?.name || '').trim(),
+            email: String(a?.email || '').trim(),
+            affiliation: String(a?.position || '').trim() || null,
+            author_order: idx + 2,
+            is_corresponding: false
+          }))
+          .filter((a) => a.name && isEmailValid(a.email));
+
+        await Promise.allSettled(tasks.map((a) => addSubmissionAuthor(submissionId, a)));
       }
 
-      setSubmissions([...submissions, {
-        id: created?.id || Date.now(),
-        conferenceId: activeConfId,
-        authorName: fd.get('fullName'),
-        email: myEmail,
-        position: fd.get('position') || currentUser?.affiliation || '',
-        coAuthors,
-        theme: fd.get('theme'),
-        sectionId: fd.get('sectionId'),
-        fileName: paperFile.name || 'doc.pdf',
-        thesisFileName: thesisFile.name || 'thesis.pdf',
-        status: 'reviewing',
-        revisionCount: 0,
-        reviewText: '',
-        reviewerId: null,
-        isBest: false,
-        backendFileId: fileId,
-        backendThesisFileId: thesisFileId
-      }]);
+      await refreshSubmissions?.(activeConfId);
 
       setIsSubmitting(false);
       setCoAuthors([]);
@@ -152,9 +155,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
           backendThesisFileId: thesisFileId
         });
 
-        if (sub.id) {
-          await attachThesis(sub.id, thesisFileId);
-        }
+        await refreshSubmissions?.(activeConfId);
 
         setRevisionUploads((prev) => {
           const next = { ...prev };
@@ -223,9 +224,9 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
               </button>
             </div>
             {coAuthors.map((ca, i) => (
-              <div key={i} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-center animate-in slide-in-from-left-2">
-                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={(e) => { const n = [...coAuthors]; n[i].name = e.target.value; setCoAuthors(n); }} />
-                <input required className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={(e) => { const n = [...coAuthors]; n[i].email = e.target.value; setCoAuthors(n); }} />
+              <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center animate-in slide-in-from-left-2">
+                <input required className="md:col-span-4 text-sm p-2.5 rounded-lg border-slate-200" placeholder="ФИО" value={ca.name} onChange={(e) => { const n = [...coAuthors]; n[i].name = e.target.value; setCoAuthors(n); }} />
+                <input required type="email" className="md:col-span-4 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Email" value={ca.email} onChange={(e) => { const n = [...coAuthors]; n[i].email = e.target.value; setCoAuthors(n); }} />
                 <input className="md:col-span-3 text-sm p-2.5 rounded-lg border-slate-200" placeholder="Должность" value={ca.position} onChange={(e) => { const n = [...coAuthors]; n[i].position = e.target.value; setCoAuthors(n); }} />
                 <button type="button" onClick={() => removeCoAuthor(i)} className="text-slate-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
               </div>

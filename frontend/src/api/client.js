@@ -42,7 +42,8 @@ async function readErrorBody(response) {
 
           if (field === 'section_id') return 'Поле "Секция" заполнено неверно.';
           if (field === 'conference_id') return 'Поле "Конференция" заполнено неверно.';
-          if (field === 'file_id') return 'Поле "Файл" заполнено неверно.';
+          if (field === 'article_file_id') return 'Поле "Файл работы" заполнено неверно.';
+          if (field === 'abstract_file_id') return 'Поле "Файл тезисов" заполнено неверно.';
 
           return field ? `Поле "${field}": ${msg}` : msg;
         })
@@ -103,3 +104,4 @@ export async function apiRequest(path, options = {}) {
   if (response.status === 204) return null;
   return response.json();
 }
+

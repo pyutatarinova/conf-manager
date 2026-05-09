@@ -74,6 +74,7 @@ export default function CreateConferenceModal({ isOpen, onClose, onCreate }) {
           <button
             onClick={resetAndClose}
             className="flex-1 px-4 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+            type="button"
           >
             Отмена
           </button>
@@ -81,6 +82,7 @@ export default function CreateConferenceModal({ isOpen, onClose, onCreate }) {
             disabled={!title.trim() || isRangeInvalid}
             onClick={handleCreate}
             className="flex-1 px-4 py-3 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all disabled:opacity-50"
+            type="button"
           >
             Создать
           </button>
