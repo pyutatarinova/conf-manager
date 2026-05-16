@@ -28,6 +28,8 @@ class Submission(Base):
 
     status = Column(Text, nullable=False, default="submitted")
 
+    final_comment = Column(Text, nullable=True)
+
     current_file_id = Column(
         UUID(as_uuid=True),
         ForeignKey("files.id", ondelete="SET NULL"),

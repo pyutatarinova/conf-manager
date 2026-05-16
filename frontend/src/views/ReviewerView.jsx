@@ -26,8 +26,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
 
   const handleSave = (sub) => {
     if (sub.reviewerLocked || sub.chairmanLocked) return;
-    const nextStatus = statusInput === 'needs_revision' && sub.revisionCount >= 1 ? 'reviewing' : statusInput;
-    updateSubmission(sub.id, { status: nextStatus, reviewText: reviewInput, finalizeReview: nextStatus !== 'reviewing' });
+    updateSubmission(sub.id, { status: statusInput, reviewText: reviewInput, finalizeReview: statusInput !== 'reviewing' });
     setActiveReviewId(null);
     setReviewInput('');
     setStatusInput('reviewing');
@@ -47,8 +46,6 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
       <div className="space-y-4">
         {mySubmissions.map((sub) => {
           const isLocked = Boolean(sub.reviewerLocked || sub.chairmanLocked);
-          const currentVersion = sub.revisionCount + 1;
-          const canRequestRevision = sub.revisionCount < 1;
 
           return (
             <div key={sub.id} className={`bg-white rounded-[2rem] border p-6 transition-all ${activeReviewId === sub.id ? 'border-indigo-500 ring-4 ring-indigo-50' : 'border-slate-100'}`}>
@@ -56,9 +53,6 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={sub.status} />
-                    <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-black text-slate-500 rounded uppercase">
-                      Версия №{currentVersion}
-                    </span>
                     {isLocked && (
                       <span className="flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
                         <CheckCircle className="w-3 h-3" /> Оценено
@@ -124,7 +118,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                 <div className="mt-6 p-6 bg-slate-50 rounded-2xl space-y-5 animate-in slide-in-from-top-4 duration-300">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Вердикт по версии №{currentVersion}</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Вердикт</label>
                       <select
                         value={statusInput}
                         onChange={(e) => setStatusInput(e.target.value)}
@@ -134,15 +128,11 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                         <option value="reviewing">Оставить на рассмотрении</option>
                         <option value="accepted_oral">Принять как устный доклад</option>
                         <option value="accepted_poster">Принять как постерный доклад</option>
-                        {canRequestRevision && <option value="needs_revision">Отправить на доработку (только 1 раз)</option>}
+                        <option value="needs_revision">Отправить на доработку</option>
                         <option value="rejected">Отклонить работу</option>
                       </select>
                     </div>
                   </div>
-
-                  {!canRequestRevision && (
-                    <p className="text-xs text-slate-500 font-semibold">Повторная доработка недоступна: следующая версия считается финальной.</p>
-                  )}
 
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Текст рецензии для авторов</label>

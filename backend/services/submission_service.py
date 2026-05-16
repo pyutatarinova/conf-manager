@@ -308,7 +308,8 @@ class SubmissionService:
             )
 
         allowed_decisions = [
-            "accepted",
+            "accepted_oral",
+            "accepted_poster",
             "rejected",
             "revision_required"
         ]
@@ -316,10 +317,12 @@ class SubmissionService:
         if data.decision not in allowed_decisions:
             raise HTTPException(
                 status_code=400,
-                detail="Decision must be accepted, rejected or revision_required"
+                detail="Decision must be accepted_oral, accepted_poster, rejected or revision_required"
             )
 
         submission.status = data.decision
+        if "comment" in data.model_fields_set:
+            submission.final_comment = data.comment
 
         db.commit()
         db.refresh(submission)

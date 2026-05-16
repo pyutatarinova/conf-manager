@@ -37,15 +37,16 @@ class ReviewService:
             )
 
         allowed_decisions = [
-            "reject",
+            "rejected",
             "revision_required",
-            "accept"
+            "accepted_oral",
+            "accepted_poster"
         ]
 
         if data.decision not in allowed_decisions:
             raise HTTPException(
                 status_code=400,
-                detail="Decision must be reject, revision_required or accept"
+                detail="Decision must be rejected, revision_required, accepted_oral or accepted_poster"
             )
 
         existing_review = review_repo.get_by_submission_and_reviewer(

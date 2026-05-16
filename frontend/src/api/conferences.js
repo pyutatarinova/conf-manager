@@ -22,10 +22,10 @@ export async function getConference(conferenceId) {
   return apiRequest(`/conferences/${conferenceId}`, { method: 'GET' });
 }
 
-export async function createInvite(conferenceId, { email, role }) {
+export async function createInvite(conferenceId, { email, role, section_id = null }) {
   return apiRequest(`/conferences/${conferenceId}/invites`, {
     method: 'POST',
-    body: { email, role }
+    body: { email, role, section_id }
   });
 }
 

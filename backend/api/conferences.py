@@ -173,6 +173,7 @@ def create_section(
     return {
         "id": str(section.id),
         "conference_id": str(section.conference_id),
+        "chair_id": str(section.chair_id) if section.chair_id else None,
         "name": section.name,
         "description": section.description,
     }
@@ -190,6 +191,7 @@ def list_sections(
         {
             "id": str(section.id),
             "conference_id": str(section.conference_id),
+            "chair_id": str(section.chair_id) if section.chair_id else None,
             "name": section.name,
             "description": section.description,
         }
@@ -225,6 +227,7 @@ def update_section(
     return {
         "id": str(section.id),
         "conference_id": str(section.conference_id),
+        "chair_id": str(section.chair_id) if section.chair_id else None,
         "name": section.name,
         "description": section.description,
     }

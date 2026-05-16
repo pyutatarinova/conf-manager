@@ -50,3 +50,14 @@ export async function downloadSubmissionFileDirect(submissionId, fileType) {
   const filename = tryGetFilenameFromContentDisposition(response.headers.get('Content-Disposition'));
   return { blob, filename, contentType: response.headers.get('Content-Type') || blob.type || '' };
 }
+
+export async function makeSubmissionDecision(submissionId, { decision, comment = null }) {
+  return apiRequest(`/submissions/${submissionId}/decision`, {
+    method: 'POST',
+    body: { decision, comment }
+  });
+}
+
+export async function listChairMySubmissions() {
+  return apiRequest('/submissions/chair/my', { method: 'GET' });
+}

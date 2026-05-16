@@ -24,7 +24,8 @@ import { clearAccessToken, getAccessToken } from './api/client';
 import { createConference, listConferences, listSections } from './api/conferences';
 import { sendEmail } from './api/notifications';
 import { getMe } from './api/users';
-import { listConferenceSubmissions, listSubmissionAuthors } from './api/submissions';
+import { listConferenceSubmissions, listSubmissionAuthors, listChairMySubmissions, makeSubmissionDecision } from './api/submissions';
+import { assignReviewer, createReview, listMyReviewSubmissions, listSubmissionReviews } from './api/reviews';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -50,6 +51,29 @@ const buildMimeType = (name) => {
   return 'application/octet-stream';
 };
 
+const normalizeSubmissionStatus = (status) => {
+  const value = String(status || '').trim();
+  if (!value) return 'reviewing';
+  if (value === 'submitted') return 'reviewing';
+  if (value === 'reviewed') return 'reviewing';
+  if (value === 'revision_required') return 'needs_revision';
+  if (value === 'rejected') return 'rejected';
+  if (value === 'accepted_oral') return 'accepted_oral';
+  if (value === 'accepted_poster') return 'accepted_poster';
+  if (value === 'accepted') return 'accepted_oral';
+  return value;
+};
+
+const mapUiDecisionToApi = (uiValue) => {
+  const v = String(uiValue || '').trim();
+  if (v === 'needs_revision') return 'revision_required';
+  if (v === 'rejected') return 'rejected';
+  if (v === 'accepted_oral') return 'accepted_oral';
+  if (v === 'accepted_poster') return 'accepted_poster';
+  if (v === 'reviewing') return null;
+  return v || null;
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -70,6 +94,7 @@ export default function App() {
   const [submissionFilesTable, setSubmissionFilesTable] = useState(INITIAL_SUBMISSION_FILES);
   const [reviewsTable, setReviewsTable] = useState(INITIAL_REVIEWS);
   const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState(INITIAL_REVIEW_ASSIGNMENTS);
+  const [chairVisibleSubmissionIds, setChairVisibleSubmissionIds] = useState([]);
 
   const [activeConfId, setActiveConfId] = useState(INITIAL_CONFERENCES[0]?.id || null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
@@ -151,6 +176,7 @@ export default function App() {
           const nextForConf = data.map((s) => ({
             id: s.id,
             conference_id: s.conference_id,
+            chair_id: s.chair_id || null,
             name: s.name,
             description: s.description
           }));
@@ -171,6 +197,57 @@ export default function App() {
   useEffect(() => {
     let isActive = true;
 
+    async function loadChairScope() {
+      if (!isAuthenticated || !activeConfId || currentRole !== ROLES.CHAIRMAN) return;
+      setChairVisibleSubmissionIds([]);
+      try {
+        const data = await listChairMySubmissions();
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        setChairVisibleSubmissionIds(data.map((s) => s.id).filter(Boolean));
+      } catch {
+        // ignore (user may not be chair)
+      }
+    }
+
+    loadChairScope();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId, currentRole]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMyAssignments() {
+      if (!isAuthenticated || !activeConfId || !currentUser?.id) return;
+      try {
+        const data = await listMyReviewSubmissions();
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        setReviewAssignmentsTable(() => data.map((a) => ({
+          id: a.assignment_id || uuid(),
+          submission_id: a.submission_id,
+          reviewer_id: currentUser.id,
+          assigned_by: a.assigned_by || null,
+          created_at: a.assigned_at || nowIso()
+        })));
+      } catch {
+        // ignore (may not be reviewer)
+      }
+    }
+
+    loadMyAssignments();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId, currentUser?.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
     async function loadSubmissions() {
       if (!isAuthenticated || !activeConfId) return;
       try {
@@ -183,7 +260,8 @@ export default function App() {
           conference_id: activeConfId,
           section_id: s.section_id || null,
           title: s.title,
-          status: s.status,
+          status: normalizeSubmissionStatus(s.status),
+          final_comment: s.final_comment ?? null,
           current_file_id: s.current_file_id || null,
           revision_count: s.revision_count ?? 1,
           is_best: s.is_best ?? false,
@@ -228,6 +306,40 @@ export default function App() {
           });
           return [...remaining, ...next];
         });
+
+        const reviewsBySubmission = await Promise.all(
+          normalizedSubmissions.map(async (s) => {
+            try {
+              const reviews = await listSubmissionReviews(s.id);
+              return { submissionId: s.id, reviews: Array.isArray(reviews) ? reviews : [] };
+            } catch {
+              return { submissionId: s.id, reviews: [] };
+            }
+          })
+        );
+
+        if (!isActive) return;
+
+        setReviewsTable((prev) => {
+          const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
+          const next = [];
+          reviewsBySubmission.forEach(({ submissionId, reviews }) => {
+            reviews.forEach((r) => {
+              next.push({
+                id: r.id || uuid(),
+                submission_id: submissionId,
+                reviewer_id: r.reviewer_id || null,
+                decision: normalizeSubmissionStatus(r.decision),
+                comments: r.comments || '',
+                file_id: r.file_id || null,
+                revision_round: r.revision_round ?? 1,
+                created_at: r.created_at || nowIso(),
+                updated_at: r.updated_at || r.created_at || nowIso()
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
       } catch {
         // ignore submissions load errors in demo/local mode
       }
@@ -250,7 +362,8 @@ export default function App() {
       conference_id: conferenceId,
       section_id: s.section_id || null,
       title: s.title,
-      status: s.status,
+      status: normalizeSubmissionStatus(s.status),
+      final_comment: s.final_comment ?? null,
       current_file_id: s.current_file_id || null,
       revision_count: s.revision_count ?? 1,
       is_best: s.is_best ?? false,
@@ -293,6 +406,38 @@ export default function App() {
       });
       return [...remaining, ...next];
     });
+
+    const reviewsBySubmission = await Promise.all(
+      normalizedSubmissions.map(async (s) => {
+        try {
+          const reviews = await listSubmissionReviews(s.id);
+          return { submissionId: s.id, reviews: Array.isArray(reviews) ? reviews : [] };
+        } catch {
+          return { submissionId: s.id, reviews: [] };
+        }
+      })
+    );
+
+    setReviewsTable((prev) => {
+      const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
+      const next = [];
+      reviewsBySubmission.forEach(({ submissionId, reviews }) => {
+        reviews.forEach((r) => {
+          next.push({
+            id: r.id || uuid(),
+            submission_id: submissionId,
+            reviewer_id: r.reviewer_id || null,
+            decision: normalizeSubmissionStatus(r.decision),
+            comments: r.comments || '',
+            file_id: r.file_id || null,
+            revision_round: r.revision_round ?? 1,
+            created_at: r.created_at || nowIso(),
+            updated_at: r.updated_at || r.created_at || nowIso()
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
   };
 
   const conferences = useMemo(
@@ -318,7 +463,7 @@ export default function App() {
   const curSections = useMemo(
     () => sectionsTable
       .filter((s) => s.conference_id === activeConfId)
-      .map((s) => ({ id: s.id, conferenceId: s.conference_id, name: s.name, description: s.description })),
+      .map((s) => ({ id: s.id, conferenceId: s.conference_id, chairId: s.chair_id || null, name: s.name, description: s.description })),
     [sectionsTable, activeConfId]
   );
 
@@ -379,7 +524,7 @@ export default function App() {
           thesisFileName: thesisFile?.original_name || 'thesis.pdf',
           status: s.status,
           revisionCount: s.revision_count,
-          reviewText: latestReview?.comments || '',
+          reviewText: s.final_comment || latestReview?.comments || '',
           reviewerId: assignment?.reviewer_id || null,
           isBest: Boolean(s.is_best),
           reviewerLocked: s.reviewer_locked_round === s.revision_count,
@@ -405,8 +550,15 @@ export default function App() {
     return curSubmissions.filter((s) => allowedIds.has(s.id));
   }, [curSubmissions, currentRole, currentUser, submissionAuthorsTable]);
 
+  const chairmanScopedSubmissions = useMemo(() => {
+    if (currentRole !== ROLES.CHAIRMAN) return curSubmissions;
+    if (!Array.isArray(chairVisibleSubmissionIds) || chairVisibleSubmissionIds.length === 0) return [];
+    const allowed = new Set(chairVisibleSubmissionIds);
+    return curSubmissions.filter((s) => allowed.has(s.id));
+  }, [curSubmissions, currentRole, chairVisibleSubmissionIds]);
+
   const currentReviewerId = curUsers.find((u) => u.role === 'reviewer')?.id || null;
-  const currentChairmanId = curUsers.find((u) => u.role === 'chairman')?.id || null;
+  const currentChairmanId = currentUser?.id || (curUsers.find((u) => u.role === 'chairman')?.id || null);
 
   const setConferences = (nextConferences) => {
     setConferencesTable((prev) => prev.map((conf) => {
@@ -606,6 +758,49 @@ export default function App() {
     const currentSubmission = submissionsTable.find((s) => s.id === id);
     if (!currentSubmission) return;
 
+    // Реальные вызовы API (reviews/submissions). Оставшаяся часть функции — legacy мок-логика.
+    if ((actorRole === 'chairman' || actorRole === 'admin') && updates?.finalizeChairman === true) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (!decision) return;
+        await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'reviewer' && updates?.finalizeReview === true) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (!decision) return;
+        await createReview({
+          submission_id: id,
+          decision,
+          comments: updates.reviewText || ''
+        });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if ((actorRole === 'chairman' || actorRole === 'admin') && updates?.reviewerId !== undefined) {
+      (async () => {
+        if (!updates.reviewerId) return;
+        await assignReviewer({ submission_id: id, reviewer_id: updates.reviewerId });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'admin' && (updates?.status !== undefined || updates?.reviewText !== undefined)) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (decision) await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
     const isReviewerLockedForRound = currentSubmission.reviewer_locked_round === currentSubmission.revision_count;
     const isChairmanLockedForRound = currentSubmission.chairman_locked_round === currentSubmission.revision_count;
 
@@ -694,6 +889,13 @@ export default function App() {
     if (updates.reviewerId !== undefined) {
       if (actorRole !== 'chairman' && actorRole !== 'admin') return;
       if (actorRole === 'chairman' && isChairmanLockedForRound) return;
+
+      (async () => {
+        if (!updates.reviewerId) return;
+        await assignReviewer({ submission_id: id, reviewer_id: updates.reviewerId });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
 
       if (updates.reviewerId) {
         const reviewer = usersTable.find((u) => u.id === updates.reviewerId);
@@ -927,7 +1129,7 @@ export default function App() {
             )}
             {activeTab === 'main' && currentRole === ROLES.CHAIRMAN && (
               <ChairmanView
-                submissions={curSubmissions}
+                submissions={chairmanScopedSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.CHAIRMAN)}
                 sections={curSections}
                 setSections={setSections}

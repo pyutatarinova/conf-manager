@@ -276,7 +276,6 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
             <div className="p-6 md:p-8 space-y-4">
               <div className="flex items-center gap-3">
                 <StatusBadge status={sub.status} />
-                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Версия {sub.revisionCount + 1}</span>
               </div>
 
               <div className="space-y-2">
@@ -335,42 +334,36 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
 
             {sub.status === 'needs_revision' && (
               <div className="px-6 pb-6 pt-0">
-                {sub.revisionCount >= 1 ? (
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400 text-center py-2">
-                    Лимит доработки исчерпан, текущая версия считается финальной
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленная работа (PDF/DOCX)</label>
-                        <input
-                          type="file"
-                          accept={ACCEPTED_FILE_TYPES}
-                          onChange={(e) => handleRevisionFilesChange(sub.id, 'paper', e.target.files?.[0])}
-                          className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленный тезис (PDF/DOCX)</label>
-                        <input
-                          type="file"
-                          accept={ACCEPTED_FILE_TYPES}
-                          onChange={(e) => handleRevisionFilesChange(sub.id, 'thesis', e.target.files?.[0])}
-                          className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
-                        />
-                      </div>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленная работа (PDF/DOCX)</label>
+                      <input
+                        type="file"
+                        accept={ACCEPTED_FILE_TYPES}
+                        onChange={(e) => handleRevisionFilesChange(sub.id, 'paper', e.target.files?.[0])}
+                        className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
+                      />
                     </div>
-                    {revisionErrors[sub.id] && <p className="text-xs text-red-500 font-semibold">{revisionErrors[sub.id]}</p>}
-                    <button
-                      onClick={() => uploadRevisionFiles(sub)}
-                      disabled={!revisionUploads[sub.id]?.paper || !revisionUploads[sub.id]?.thesis}
-                      className="w-full bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
-                    >
-                      <Upload className="w-4 h-4" /> Загрузить исправленную версию и тезис
-                    </button>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Исправленный тезис (PDF/DOCX)</label>
+                      <input
+                        type="file"
+                        accept={ACCEPTED_FILE_TYPES}
+                        onChange={(e) => handleRevisionFilesChange(sub.id, 'thesis', e.target.files?.[0])}
+                        className="w-full border border-slate-200 p-2.5 rounded-xl bg-white text-sm"
+                      />
+                    </div>
                   </div>
-                )}
+                  {revisionErrors[sub.id] && <p className="text-xs text-red-500 font-semibold">{revisionErrors[sub.id]}</p>}
+                  <button
+                    onClick={() => uploadRevisionFiles(sub)}
+                    disabled={!revisionUploads[sub.id]?.paper || !revisionUploads[sub.id]?.thesis}
+                    className="w-full bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
+                  >
+                    <Upload className="w-4 h-4" /> Загрузить исправленную версию и тезис
+                  </button>
+                </div>
               </div>
             )}
           </div>

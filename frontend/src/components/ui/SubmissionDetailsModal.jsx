@@ -172,9 +172,6 @@ export default function SubmissionDetailsModal({
               {filesInfo.error && (
                 <p className="text-xs text-rose-600 font-semibold">{filesInfo.error}</p>
               )}
-              <p className="text-xs text-slate-500">
-                Версия: <span className="font-bold text-slate-700">№{filesInfo.latestVersion ?? ((submission.revisionCount ?? 0) + 1)}</span>
-              </p>
             </div>
 
             <div className="p-5 rounded-2xl border border-slate-100 bg-slate-50/70 space-y-3">

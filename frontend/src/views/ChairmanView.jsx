@@ -10,7 +10,12 @@ import { triggerBrowserDownload } from '../utils/download';
 
 export default function ChairmanView({ submissions, updateSubmission, sections, setSections, users, chairmanId }) {
   const chairman = useMemo(() => (users || []).find((u) => u.id === chairmanId) || null, [users, chairmanId]);
-  const mySectionId = chairman?.sectionId || '';
+  const mySectionId = useMemo(() => {
+    const byChair = (sections || []).find((s) => s.chairId && s.chairId === chairmanId)?.id;
+    if (byChair) return byChair;
+    const uniqueSectionIds = [...new Set((submissions || []).map((s) => s.sectionId).filter(Boolean))];
+    return uniqueSectionIds.length === 1 ? uniqueSectionIds[0] : (uniqueSectionIds[0] || '');
+  }, [submissions, sections, chairmanId]);
   const mySection = useMemo(() => (sections || []).find((s) => s.id === mySectionId) || null, [sections, mySectionId]);
 
   const [desc, setDesc] = useState(mySection?.description || '');
@@ -22,10 +27,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
     setDesc(mySection?.description || '');
   }, [mySection]);
 
-  const mySubmissions = useMemo(
-    () => (submissions || []).filter((s) => s.sectionId === mySectionId),
-    [submissions, mySectionId]
-  );
+  const mySubmissions = useMemo(() => submissions || [], [submissions]);
 
   const detailsSubmission = useMemo(
     () => mySubmissions.find((s) => s.id === detailsId) || null,

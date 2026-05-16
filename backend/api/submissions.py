@@ -64,6 +64,7 @@ def list_conference_submissions(
             "id": str(s.id),
             "title": s.title,
             "status": s.status,
+            "final_comment": s.final_comment,
             "current_file_id": str(s.current_file_id) if s.current_file_id else None,
             "revision_count": s.revision_count
         }
@@ -221,6 +222,7 @@ def make_submission_decision(
         "id": str(submission.id),
         "title": submission.title,
         "status": submission.status,
+        "comment": submission.final_comment,
         "conference_id": str(submission.conference_id),
         "section_id": str(submission.section_id)
     }

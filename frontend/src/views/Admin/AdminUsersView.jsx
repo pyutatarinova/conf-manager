@@ -33,9 +33,10 @@ export default function AdminUsersView({ activeConfId, users, setUsers, submissi
     }
 
     const role = newUser.role === 'chairman' ? 'chair' : 'reviewer';
+    const section_id = role === 'chair' ? (newUser.sectionId || null) : null;
 
     try {
-      await createInvite(activeConfId, { email: newUser.email, role });
+      await createInvite(activeConfId, { email: newUser.email, role, section_id });
       setUsers([...users, { id: Date.now(), conferenceId: activeConfId, name: '', ...newUser }]);
       setNewUser({ email: '', position: '', role: 'reviewer', sectionId: '' });
       setInviteCreated(true);
