@@ -228,3 +228,38 @@ def update_section(
         "name": section.name,
         "description": section.description,
     }
+
+@router.get("/{conference_id}/participants")
+def list_conference_participants(
+    conference_id: UUID,
+    current_user: User = Depends(require_conference_role(["admin"])),
+    db: Session = Depends(get_db)
+):
+    return invite_service.list_conference_participants(
+        db=db,
+        conference_id=conference_id
+    )
+
+@router.get("/{conference_id}/reviewers")
+def list_conference_reviewers(
+    conference_id: UUID,
+    current_user: User = Depends(require_conference_role(["admin", "chair"])),
+    db: Session = Depends(get_db)
+):
+    return invite_service.list_conference_reviewers(
+        db=db,
+        conference_id=conference_id
+    )
+
+@router.delete("/{conference_id}/participants/{invite_id}")
+def remove_conference_participant(
+    conference_id: UUID,
+    invite_id: UUID,
+    current_user: User = Depends(require_conference_role(["admin"])),
+    db: Session = Depends(get_db)
+):
+    return invite_service.remove_conference_participant(
+        db=db,
+        conference_id=conference_id,
+        invite_id=invite_id
+    )

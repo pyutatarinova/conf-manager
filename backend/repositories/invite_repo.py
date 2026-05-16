@@ -21,3 +21,11 @@ class InviteRepository:
         db.commit()
         db.refresh(invite)
         return invite
+    
+    def list_by_conference(self, db, conference_id):
+        return (
+            db.query(Invite)
+            .filter(Invite.conference_id == conference_id)
+            .order_by(Invite.created_at.desc())
+            .all()
+        )
