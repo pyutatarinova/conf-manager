@@ -60,15 +60,8 @@ def list_conference_submissions(
     )
 
     return [
-        {
-            "id": str(s.id),
-            "title": s.title,
-            "status": s.status,
-            "final_comment": s.final_comment,
-            "current_file_id": str(s.current_file_id) if s.current_file_id else None,
-            "revision_count": s.revision_count
-        }
-        for s in submissions
+        submission_service.build_submission_response(db, submission)
+        for submission in submissions
     ]
 
 
@@ -222,7 +215,7 @@ def make_submission_decision(
         "id": str(submission.id),
         "title": submission.title,
         "status": submission.status,
-        "comment": submission.final_comment,
+        "final_comment": submission.final_comment,
         "conference_id": str(submission.conference_id),
         "section_id": str(submission.section_id)
     }
@@ -253,15 +246,6 @@ def list_my_section_submissions(
     )
 
     return [
-        {
-            "id": str(submission.id),
-            "conference_id": str(submission.conference_id),
-            "section_id": str(submission.section_id),
-            "title": submission.title,
-            "status": submission.status,
-            "revision_count": submission.revision_count,
-            "created_at": submission.created_at,
-            "updated_at": submission.updated_at
-        }
+        submission_service.build_submission_response(db, submission)
         for submission in submissions
     ]
