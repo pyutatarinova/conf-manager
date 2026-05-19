@@ -4,10 +4,12 @@ from models.user import User
 from models.submission import Submission
 from models.conference_role import ConferenceRole
 from models.review_assignment import ReviewAssignment
+from services.submission_service import SubmissionService
 
 from repositories.review_assignment_repo import ReviewAssignmentRepository
 
 review_assignment_repo = ReviewAssignmentRepository()
+submission_service = SubmissionService()
 
 class ReviewAssignmentService:
 
@@ -109,14 +111,9 @@ class ReviewAssignmentService:
             )
 
             if submission:
-                result.append({
-                    "assignment_id": str(assignment.id),
-                    "submission_id": str(submission.id),
-                    "conference_id": str(submission.conference_id),
-                    "section_id": str(submission.section_id),
-                    "title": submission.title,
-                    "status": submission.status,
-                    "assigned_at": assignment.created_at
-                })
+                item = submission_service.build_submission_response(db, submission)
+                item["assignment_id"] = str(assignment.id)
+                item["assigned_at"] = assignment.created_at
+                result.append(item)
 
         return result

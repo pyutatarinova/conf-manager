@@ -7,6 +7,10 @@ from models.conference import Conference
 from models.section import Section
 from models.submission_author import SubmissionAuthor
 from models.conference_role import ConferenceRole
+from models.user import User
+from models.review import Review
+from models.review_assignment import ReviewAssignment
+
 
 from repositories.submission_repo import SubmissionRepository
 from repositories.submission_file_repo import SubmissionFileRepository
@@ -354,6 +358,8 @@ class SubmissionService:
         if "comment" in data.model_fields_set:
             submission.final_comment = data.comment
 
+        submission.final_comment = data.comment
+
         db.commit()
         db.refresh(submission)
 
@@ -390,3 +396,108 @@ class SubmissionService:
         db.commit()
         db.refresh(submission)
         return submission
+    
+    def build_submission_response(self, db, submission):
+        authors = (
+            db.query(SubmissionAuthor)
+            .filter(SubmissionAuthor.submission_id == submission.id)
+            .order_by(SubmissionAuthor.author_order)
+            .all()
+        )
+
+        files = submission_file_repo.list_by_submission(
+            db=db,
+            submission_id=submission.id
+        )
+
+        assignments = (
+            db.query(ReviewAssignment)
+            .filter(ReviewAssignment.submission_id == submission.id)
+            .all()
+        )
+
+        assigned_reviewers = []
+
+        for assignment in assignments:
+            reviewer = (
+                db.query(User)
+                .filter(User.id == assignment.reviewer_id)
+                .first()
+            )
+
+            assigned_reviewers.append({
+                "assignment_id": str(assignment.id),
+                "reviewer_id": str(assignment.reviewer_id),
+                "reviewer_name": reviewer.name if reviewer else None,
+                "reviewer_email": reviewer.email if reviewer else None,
+                "assigned_at": assignment.created_at
+            })
+
+        reviews = (
+            db.query(Review)
+            .filter(Review.submission_id == submission.id)
+            .all()
+        )
+
+        review_items = []
+
+        for review in reviews:
+            reviewer = (
+                db.query(User)
+                .filter(User.id == review.reviewer_id)
+                .first()
+            )
+
+            review_items.append({
+                "id": str(review.id),
+                "reviewer_id": str(review.reviewer_id),
+                "reviewer_name": reviewer.name if reviewer else None,
+                "reviewer_email": reviewer.email if reviewer else None,
+                "decision": review.decision,
+                "comments": review.comments,
+                "file_id": str(review.file_id) if review.file_id else None,
+                "revision_round": review.revision_round,
+                "created_at": review.created_at,
+                "updated_at": review.updated_at
+            })
+
+        return {
+            "id": str(submission.id),
+            "conference_id": str(submission.conference_id),
+            "section_id": str(submission.section_id),
+            "title": submission.title,
+            "status": submission.status,
+            "final_comment": submission.final_comment,
+            "current_file_id": str(submission.current_file_id) if submission.current_file_id else None,
+            "revision_count": submission.revision_count,
+            "is_best": submission.is_best,
+            "created_at": submission.created_at,
+            "updated_at": submission.updated_at,
+
+            "authors": [
+                {
+                    "id": str(author.id),
+                    "user_id": str(author.user_id) if author.user_id else None,
+                    "name": author.name,
+                    "email": author.email,
+                    "affiliation": author.affiliation,
+                    "author_order": author.author_order,
+                    "is_corresponding": author.is_corresponding
+                }
+                for author in authors
+            ],
+
+            "files": [
+                {
+                    "id": str(file.id),
+                    "file_id": str(file.file_id),
+                    "file_type": file.file_type,
+                    "version": file.version,
+                    "uploaded_at": file.uploaded_at
+                }
+                for file in files
+            ],
+
+            "assigned_reviewers": assigned_reviewers,
+            "reviews": review_items
+        }
