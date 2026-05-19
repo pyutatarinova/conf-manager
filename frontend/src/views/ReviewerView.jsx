@@ -32,7 +32,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
     setStatusInput('reviewing');
   };
 
-  const mySubmissions = submissions.filter((s) => !currentReviewerId || s.reviewerId === currentReviewerId || s.reviewerId === null);
+  const mySubmissions = submissions.filter((s) => !currentReviewerId || s.reviewerId === currentReviewerId);
 
   return (
     <div className="space-y-6">

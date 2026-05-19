@@ -34,8 +34,17 @@ class ConferenceService:
 
         return conference
 
-    def list_conferences(self, db):
-        return conference_repo.list_all(db)
+    def list_conferences_for_user(self, db, current_user):
+        conferences = conference_repo.list_all(db)
+
+        role_rows = (
+            db.query(ConferenceRole)
+            .filter(ConferenceRole.user_id == current_user.id)
+            .all()
+        )
+        allowed_ids = {r.conference_id for r in role_rows}
+
+        return [c for c in conferences if c.is_public or c.id in allowed_ids]
 
     def get_conference(self, db, conference_id):
         conference = conference_repo.get_by_id(db, conference_id)

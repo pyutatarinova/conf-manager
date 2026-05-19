@@ -6,10 +6,42 @@ from models.review_assignment import ReviewAssignment
 from models.file import File
 
 from repositories.review_repo import ReviewRepository
+from services.email_service import EmailService
 
 review_repo = ReviewRepository()
+email_service = EmailService()
 
 class ReviewService:
+    def _notify_authors_about_review(self, db, submission: Submission, review: Review):
+        # На случай если /reviews все же используется: уведомляем авторов о комментарии/решении рецензента
+        from models.submission_author import SubmissionAuthor
+
+        authors = (
+            db.query(SubmissionAuthor)
+            .filter(SubmissionAuthor.submission_id == submission.id)
+            .all()
+        )
+        emails = sorted({a.email for a in (authors or []) if getattr(a, "email", None)})
+        if not emails:
+            return
+
+        decision_map = {
+            "revision_required": "Отправлено на доработку",
+            "rejected": "Отклонено",
+            "accepted_oral": "Принято (устный доклад)",
+            "accepted_poster": "Принято (постер)",
+        }
+
+        decision_text = decision_map.get(review.decision, review.decision)
+        subject = "Добавлена рецензия по вашей заявке"
+        comments = (review.comments or "").strip()
+
+        text = f"Заявка: {submission.title}\nРешение рецензента: {decision_text}"
+        if comments:
+            text += f"\n\nКомментарий рецензента:\n{comments}"
+
+        for to_email in emails:
+            email_service.send_text(to_email=to_email, subject=subject, text=text)
 
     def create_review(self, db, data, current_user):
         submission = (
@@ -19,7 +51,7 @@ class ReviewService:
         )
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         assignment = (
             db.query(ReviewAssignment)
@@ -33,7 +65,7 @@ class ReviewService:
         if assignment is None:
             raise HTTPException(
                 status_code=403,
-                detail="You are not assigned to review this submission"
+                detail="Вы не назначены рецензентом для этой заявки"
             )
 
         allowed_decisions = [
@@ -46,7 +78,7 @@ class ReviewService:
         if data.decision not in allowed_decisions:
             raise HTTPException(
                 status_code=400,
-                detail="Decision must be rejected, revision_required, accepted_oral or accepted_poster"
+                detail="Некорректное решение. Допустимо: rejected, revision_required, accepted_oral, accepted_poster"
             )
 
         existing_review = review_repo.get_by_submission_and_reviewer(
@@ -58,7 +90,7 @@ class ReviewService:
         if existing_review:
             raise HTTPException(
                 status_code=400,
-                detail="Review already exists for this submission"
+                detail="Рецензия для этой заявки уже существует"
             )
 
         if data.file_id is not None:
@@ -69,12 +101,12 @@ class ReviewService:
             )
 
             if file is None:
-                raise HTTPException(status_code=404, detail="Review file not found")
+                raise HTTPException(status_code=404, detail="Файл рецензии не найден")
 
             if file.uploaded_by != current_user.id:
                 raise HTTPException(
                     status_code=403,
-                    detail="You can attach only your own uploaded files"
+                    detail="Можно прикреплять только загруженные вами файлы"
                 )
 
         review = Review(
@@ -91,6 +123,11 @@ class ReviewService:
         submission.status = "reviewed"
         db.commit()
 
+        try:
+            self._notify_authors_about_review(db, submission, review)
+        except Exception:
+            pass
+
         return review
 
     def list_submission_reviews(self, db, submission_id, current_user):
@@ -101,7 +138,7 @@ class ReviewService:
         )
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         return review_repo.list_by_submission(
             db=db,

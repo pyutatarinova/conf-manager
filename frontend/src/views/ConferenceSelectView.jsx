@@ -1,8 +1,16 @@
-import { CalendarDays, Plus } from 'lucide-react';
+import { CalendarDays, LogOut, Plus } from 'lucide-react';
 import { formatConferenceDate } from '../utils/helpers';
 
-export default function ConferenceSelectView({ conferences, onSelect, isAdmin, onCreateConference, loading = false, error = '' }) {
-  const visibleConferences = isAdmin ? conferences : conferences.filter((c) => c.isPublic);
+export default function ConferenceSelectView({
+  conferences,
+  onSelect,
+  isAdmin,
+  onCreateConference,
+  onLogout,
+  loading = false,
+  error = ''
+}) {
+  const visibleConferences = conferences || [];
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -11,23 +19,34 @@ export default function ConferenceSelectView({ conferences, onSelect, isAdmin, o
           <div>
             <h1 className="text-2xl md:text-3xl font-black text-slate-900">Выберите конференцию</h1>
           </div>
-          {isAdmin && (
+          <div className="flex flex-wrap gap-2 justify-end">
+            {isAdmin && (
+              <button
+                onClick={onCreateConference}
+                className="inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                type="button"
+              >
+                <Plus className="w-4 h-4" /> Создать конференцию
+              </button>
+            )}
             <button
-              onClick={onCreateConference}
-              className="inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+              onClick={onLogout}
+              className="inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-2xl font-bold hover:bg-black transition-all"
+              type="button"
             >
-              <Plus className="w-4 h-4" /> Создать конференцию
+              <LogOut className="w-4 h-4" /> Выйти
             </button>
-          )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Boolean(conferences?.length === 0 && (loading || error)) && (
+          {Boolean(visibleConferences.length === 0 && (loading || error)) && (
             <div className="col-span-full bg-white border border-slate-100 rounded-3xl p-6 text-center">
               {loading && <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">Загрузка…</p>}
               {!loading && error && <p className="text-red-600 font-semibold text-sm">{error}</p>}
             </div>
           )}
+
           {visibleConferences.map((conference) => {
             const startDate = formatConferenceDate(conference.startDate);
             const endDate = formatConferenceDate(conference.endDate);
@@ -38,6 +57,7 @@ export default function ConferenceSelectView({ conferences, onSelect, isAdmin, o
                 key={conference.id}
                 onClick={() => onSelect(conference.id)}
                 className="text-left w-full bg-white border border-slate-100 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group"
+                type="button"
               >
                 {isAdmin && (
                   <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -67,7 +87,7 @@ export default function ConferenceSelectView({ conferences, onSelect, isAdmin, o
             );
           })}
 
-          {visibleConferences.length === 0 && (
+          {visibleConferences.length === 0 && !loading && !error && (
             <div className="col-span-full bg-white border border-slate-100 rounded-3xl p-10 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">
               Нет доступных конференций
             </div>
@@ -77,3 +97,4 @@ export default function ConferenceSelectView({ conferences, onSelect, isAdmin, o
     </div>
   );
 }
+

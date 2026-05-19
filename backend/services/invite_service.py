@@ -35,6 +35,42 @@ class InviteService:
                 detail="Reviewer cannot be attached to section"
             )
 
+        if data.role == "chair":
+            section = (
+                db.query(Section)
+                .filter(
+                    Section.id == data.section_id,
+                    Section.conference_id == conference_id
+                )
+                .first()
+            )
+
+            if section is None:
+                raise HTTPException(status_code=404, detail="Секция не найдена")
+
+            if section.chair_id is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="На эту секцию уже назначен председатель"
+                )
+
+            existing_invite = (
+                db.query(Invite)
+                .filter(
+                    Invite.conference_id == conference_id,
+                    Invite.section_id == data.section_id,
+                    Invite.role == "chair",
+                    Invite.is_used == False  # noqa: E712
+                )
+                .first()
+            )
+
+            if existing_invite is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Приглашение председателю для этой секции уже отправлено"
+                )
+
         token = secrets.token_urlsafe(32)
 
         invite = Invite(
@@ -135,7 +171,7 @@ class InviteService:
         )
 
         if invite is None:
-            raise HTTPException(status_code=404, detail="Invite not found")
+            raise HTTPException(status_code=404, detail="Приглашение не найдено")
 
         # 1. Если пользователь ещё не зарегистрировался — просто отменяем приглашение
         if not invite.is_used:

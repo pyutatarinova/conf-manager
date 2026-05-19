@@ -52,7 +52,7 @@ export default function AuthView({ onAuth, onInviteRegister }) {
           <p className="text-slate-400 mt-2 font-medium">{isLogin ? 'Личный кабинет' : 'Регистрация участника'}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           {!isLogin && (
             <input
               required
@@ -73,6 +73,8 @@ export default function AuthView({ onAuth, onInviteRegister }) {
             className="w-full border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
             placeholder="Email"
             disabled={isSubmitting}
+            autoComplete="new-password"
+            autoComplete="username"
           />
 
           <input
@@ -127,4 +129,3 @@ export default function AuthView({ onAuth, onInviteRegister }) {
     </div>
   );
 }
-

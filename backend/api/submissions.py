@@ -14,6 +14,7 @@ from schemas.submission_file import AttachThesisRequest
 from services.submission_service import SubmissionService
 from schemas.submission_author import SubmissionAuthorCreate
 from schemas.submission_decision import SubmissionDecisionCreate
+from schemas.submission_update import SubmissionUpdate
 from services.submission_author_service import SubmissionAuthorService
 
 
@@ -225,6 +226,29 @@ def make_submission_decision(
         "comment": submission.final_comment,
         "conference_id": str(submission.conference_id),
         "section_id": str(submission.section_id)
+    }
+
+@router.patch("/{submission_id}")
+def update_submission(
+    submission_id: UUID,
+    data: SubmissionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    submission = submission_service.update_submission(
+        db=db,
+        submission_id=submission_id,
+        data=data,
+        current_user=current_user
+    )
+
+    return {
+        "id": str(submission.id),
+        "conference_id": str(submission.conference_id),
+        "section_id": str(submission.section_id) if submission.section_id else None,
+        "title": submission.title,
+        "status": submission.status,
+        "revision_count": submission.revision_count
     }
 
 @router.get("/chair/my")

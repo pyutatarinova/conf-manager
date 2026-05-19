@@ -16,12 +16,12 @@ class SubmissionAuthorService:
         )
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
         
         if data.author_order == 1:
             raise HTTPException(
                 status_code=400,
-                detail="Author order 1 is reserved for submission creator"
+                detail="Порядок автора 1 зарезервирован для создателя заявки"
             )
 
         existing_order = submission_author_repo.get_by_order(
@@ -33,7 +33,7 @@ class SubmissionAuthorService:
         if existing_order:
             raise HTTPException(
                 status_code=400,
-                detail="Author with this order already exists"
+                detail="Автор с таким порядковым номером уже существует"
             )
 
         if data.is_corresponding:
@@ -46,7 +46,7 @@ class SubmissionAuthorService:
                 if author.is_corresponding:
                     raise HTTPException(
                         status_code=400,
-                        detail="Corresponding author already exists"
+                        detail="Ответственный (corresponding) автор уже назначен"
                     )
 
         author = SubmissionAuthor(
@@ -69,7 +69,7 @@ class SubmissionAuthorService:
         )
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         return submission_author_repo.list_by_submission(
             db=db,

@@ -18,6 +18,8 @@ from schemas.section_update import SectionUpdate
 
 from services.conference_service import ConferenceService
 from services.invite_service import InviteService
+from models.conference_role import ConferenceRole
+from models.user import User as UserModel
 
 router = APIRouter()
 conference_service = ConferenceService()
@@ -48,7 +50,7 @@ def list_conferences(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    conferences = conference_service.list_conferences(db)
+    conferences = conference_service.list_conferences_for_user(db, current_user)
 
     return [
         {
@@ -87,7 +89,7 @@ def get_conference(
 def update_conference(
     conference_id: UUID,
     data: ConferenceUpdate,
-    current_user: User = Depends(require_conference_role(["admin"])),
+    current_user: User = Depends(require_conference_role(["admin", "chair"])),
     db: Session = Depends(get_db),
 ):
     conference = conference_service.update_conference(db=db, conference_id=conference_id, data=data)
@@ -143,7 +145,7 @@ def reviewer_test(
 def create_invite(
     conference_id: UUID,
     data: InviteCreate,
-    current_user: User = Depends(require_conference_role(["admin"])),
+    current_user: User = Depends(require_conference_role(["admin", "chair"])),
     db: Session = Depends(get_db),
 ):
     invite = invite_service.create_invite(db=db, conference_id=conference_id, data=data)
@@ -185,17 +187,24 @@ def list_sections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    sections = db.query(Section).filter(Section.conference_id == conference_id).all()
+    rows = (
+        db.query(Section, UserModel)
+        .outerjoin(UserModel, UserModel.id == Section.chair_id)
+        .filter(Section.conference_id == conference_id)
+        .all()
+    )
 
     return [
         {
             "id": str(section.id),
             "conference_id": str(section.conference_id),
             "chair_id": str(section.chair_id) if section.chair_id else None,
+            "chair_name": chair.name if chair else None,
+            "chair_email": chair.email if chair else None,
             "name": section.name,
             "description": section.description,
         }
-        for section in sections
+        for section, chair in rows
     ]
 
 
@@ -204,7 +213,7 @@ def update_section(
     conference_id: UUID,
     section_id: UUID,
     data: SectionUpdate,
-    current_user: User = Depends(require_conference_role(["admin"])),
+    current_user: User = Depends(require_conference_role(["admin", "chair"])),
     db: Session = Depends(get_db),
 ):
     section = (
@@ -212,7 +221,19 @@ def update_section(
     )
 
     if section is None:
-        raise HTTPException(status_code=404, detail="Section not found")
+        raise HTTPException(status_code=404, detail="Секция не найдена")
+
+    role_row = (
+        db.query(ConferenceRole)
+        .filter(
+            ConferenceRole.user_id == current_user.id,
+            ConferenceRole.conference_id == conference_id
+        )
+        .first()
+    )
+
+    if role_row is not None and role_row.role == "chair" and section.chair_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     if data.name is not None:
         section.name = data.name
@@ -231,6 +252,72 @@ def update_section(
         "name": section.name,
         "description": section.description,
     }
+
+
+@router.get("/{conference_id}/my-role")
+def my_conference_role(
+    conference_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    role = (
+        db.query(ConferenceRole)
+        .filter(
+            ConferenceRole.user_id == current_user.id,
+            ConferenceRole.conference_id == conference_id
+        )
+        .first()
+    )
+
+    return {
+        "conference_id": str(conference_id),
+        "user_id": str(current_user.id),
+        "role": role.role if role else None,
+    }
+
+
+@router.get("/{conference_id}/staff")
+def list_conference_staff(
+    conference_id: UUID,
+    current_user: User = Depends(require_conference_role(["admin", "chair"])),
+    db: Session = Depends(get_db),
+):
+    from models.section import Section
+
+    roles = (
+        db.query(ConferenceRole)
+        .filter(ConferenceRole.conference_id == conference_id)
+        .all()
+    )
+
+    result = []
+
+    for r in roles:
+        u = db.query(UserModel).filter(UserModel.id == r.user_id).first()
+        section_id = None
+        if r.role == "chair" and u is not None:
+            section = (
+                db.query(Section)
+                .filter(
+                    Section.conference_id == conference_id,
+                    Section.chair_id == u.id
+                )
+                .first()
+            )
+            section_id = str(section.id) if section else None
+
+        result.append({
+            "role_id": str(r.id),
+            "conference_id": str(r.conference_id),
+            "user_id": str(r.user_id),
+            "role": r.role,
+            "section_id": section_id,
+            "user_name": u.name if u else None,
+            "email": u.email if u else None,
+            "affiliation": u.affiliation if u else None,
+        })
+
+    return result
 
 @router.get("/{conference_id}/participants")
 def list_conference_participants(

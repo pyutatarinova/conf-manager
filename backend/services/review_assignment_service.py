@@ -19,7 +19,7 @@ class ReviewAssignmentService:
         )
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         # Назначать рецензента может admin или chair этой конференции
         assigner_role = (
@@ -35,7 +35,7 @@ class ReviewAssignmentService:
         if assigner_role is None:
             raise HTTPException(
                 status_code=403,
-                detail="Only conference admin or chair can assign reviewers"
+                detail="Только администратор или председатель конференции может назначать рецензентов"
             )
 
         reviewer = (
@@ -45,7 +45,7 @@ class ReviewAssignmentService:
         )
 
         if reviewer is None:
-            raise HTTPException(status_code=404, detail="Reviewer not found")
+            raise HTTPException(status_code=404, detail="Рецензент не найден")
 
         reviewer_role = (
             db.query(ConferenceRole)
@@ -60,7 +60,7 @@ class ReviewAssignmentService:
         if reviewer_role is None:
             raise HTTPException(
                 status_code=400,
-                detail="User is not reviewer in this conference"
+                detail="Пользователь не является рецензентом в этой конференции"
             )
 
         existing = review_assignment_repo.get_existing(
@@ -72,8 +72,18 @@ class ReviewAssignmentService:
         if existing:
             raise HTTPException(
                 status_code=400,
-                detail="Reviewer already assigned to this submission"
+                detail="Рецензент уже назначен на эту заявку"
             )
+
+        # Один активный рецензент на заявку: при переназначении удаляем прежние назначения.
+        previous_assignments = review_assignment_repo.list_by_submission(
+            db=db,
+            submission_id=data.submission_id
+        )
+
+        for a in previous_assignments:
+            db.delete(a)
+        db.commit()
 
         assignment = ReviewAssignment(
             submission_id=data.submission_id,

@@ -6,9 +6,10 @@ import StatusBadge from '../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../components/ui/SubmissionDetailsModal';
 import { getAuthorsString } from '../utils/helpers';
 import { downloadSubmissionFileDirect } from '../api/submissions';
+import { updateSection } from '../api/conferences';
 import { triggerBrowserDownload } from '../utils/download';
 
-export default function ChairmanView({ submissions, updateSubmission, sections, setSections, users, chairmanId }) {
+export default function ChairmanView({ activeConfId, submissions, updateSubmission, sections, setSections, users, chairmanId, reviewers = [] }) {
   const chairman = useMemo(() => (users || []).find((u) => u.id === chairmanId) || null, [users, chairmanId]);
   const mySectionId = useMemo(() => {
     const byChair = (sections || []).find((s) => s.chairId && s.chairId === chairmanId)?.id;
@@ -57,7 +58,19 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
   }
 
   const confirmSave = () => {
-    setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+    if (!activeConfId || !mySectionId) {
+      setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      return;
+    }
+
+    void updateSection(activeConfId, mySectionId, { name: mySection.name, description: desc })
+      .then(() => {
+        setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      })
+      .catch(() => {
+        // keep local update even if request fails
+        setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      });
   };
 
   return (
@@ -65,7 +78,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Секция: {mySection.name}</h1>
-          <p className="text-sm text-slate-500 font-medium">Председатель секции: {chairman?.name || '—'}</p>
+          <p className="text-sm text-slate-500 font-medium">Председатель секции: {chairman?.name || mySection?.chairName || '—'}</p>
         </div>
         <div className="flex gap-4">
           <div className="text-center">
@@ -158,8 +171,8 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                       title={sub.chairmanLocked ? 'Решение председателя зафиксировано: назначение рецензента недоступно.' : ''}
                     >
                       <option value="">Назначить...</option>
-                      {(users || []).filter((u) => u.role === 'reviewer').map((r) => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
+                      {(reviewers || []).map((r) => (
+                        <option key={r.user_id} value={r.user_id}>{r.name}</option>
                       ))}
                     </select>
                   </td>

@@ -12,12 +12,42 @@ from repositories.submission_repo import SubmissionRepository
 from repositories.submission_file_repo import SubmissionFileRepository
 
 from integrations.minio_client import minio_client, MINIO_BUCKET
+from services.email_service import EmailService
 
 submission_repo = SubmissionRepository()
 submission_file_repo = SubmissionFileRepository()
+email_service = EmailService()
 
 
 class SubmissionService:
+    def _notify_authors_about_decision(self, db, submission: Submission):
+        authors = (
+            db.query(SubmissionAuthor)
+            .filter(SubmissionAuthor.submission_id == submission.id)
+            .all()
+        )
+
+        emails = sorted({a.email for a in (authors or []) if getattr(a, "email", None)})
+        if not emails:
+            return
+
+        status_map = {
+            "revision_required": "Отправлено на доработку",
+            "rejected": "Отклонено",
+            "accepted_oral": "Принято (устный доклад)",
+            "accepted_poster": "Принято (постер)",
+        }
+
+        status_text = status_map.get(submission.status, submission.status)
+        subject = "Изменился статус вашей заявки"
+        comment = (submission.final_comment or "").strip()
+
+        text = f"Заявка: {submission.title}\nНовый статус: {status_text}"
+        if comment:
+            text += f"\n\nКомментарий:\n{comment}"
+
+        for to_email in emails:
+            email_service.send_text(to_email=to_email, subject=subject, text=text)
 
     def create_submission(self, db, data, current_user):
         conference = (
@@ -27,7 +57,7 @@ class SubmissionService:
         )
 
         if conference is None:
-            raise HTTPException(status_code=404, detail="Conference not found")
+            raise HTTPException(status_code=404, detail="Конференция не найдена")
 
         section = (
             db.query(Section)
@@ -39,7 +69,7 @@ class SubmissionService:
         )
 
         if section is None:
-            raise HTTPException(status_code=404, detail="Section not found")
+            raise HTTPException(status_code=404, detail="Секция не найдена")
 
         article_file = (
             db.query(File)
@@ -48,7 +78,7 @@ class SubmissionService:
         )
 
         if article_file is None:
-            raise HTTPException(status_code=404, detail="Article file not found")
+            raise HTTPException(status_code=404, detail="Файл работы не найден")
 
         abstract_file = (
             db.query(File)
@@ -57,24 +87,24 @@ class SubmissionService:
         )
 
         if abstract_file is None:
-            raise HTTPException(status_code=404, detail="Abstract file not found")
+            raise HTTPException(status_code=404, detail="Файл тезисов не найден")
 
         if article_file.uploaded_by != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="You can use only your own article file"
+                detail="Можно использовать только загруженный вами файл работы"
             )
 
         if abstract_file.uploaded_by != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="You can use only your own abstract file"
+                detail="Можно использовать только загруженный вами файл тезисов"
             )
 
         if article_file.id == abstract_file.id:
             raise HTTPException(
                 status_code=400,
-                detail="Article file and abstract file must be different"
+                detail="Файл работы и файл тезисов должны быть разными"
             )
 
         submission = Submission(
@@ -190,10 +220,10 @@ class SubmissionService:
         submission = submission_repo.get_by_id(db, submission_id)
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         if not self._can_access_submission_files(db, submission, current_user):
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            raise HTTPException(status_code=403, detail="Недостаточно прав")
 
         submission_files = submission_file_repo.list_by_submission(
             db=db,
@@ -213,10 +243,10 @@ class SubmissionService:
         submission = submission_repo.get_by_id(db, submission_id)
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         if not self._can_access_submission_files(db, submission, current_user):
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            raise HTTPException(status_code=403, detail="Недостаточно прав")
 
         submission_file = submission_file_repo.get_latest_by_type(
             db=db,
@@ -225,7 +255,7 @@ class SubmissionService:
         )
 
         if submission_file is None:
-            raise HTTPException(status_code=404, detail="File not found for this submission")
+            raise HTTPException(status_code=404, detail="Файл для этой заявки не найден")
 
         file = (
             db.query(File)
@@ -234,7 +264,7 @@ class SubmissionService:
         )
 
         if file is None:
-            raise HTTPException(status_code=404, detail="File metadata not found")
+            raise HTTPException(status_code=404, detail="Метаданные файла не найдены")
 
         download_url = get_presigned_download_url(file.storage_path)
 
@@ -258,10 +288,10 @@ class SubmissionService:
         submission = submission_repo.get_by_id(db, submission_id)
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         if not self._can_access_submission_files(db, submission, current_user):
-            raise HTTPException(status_code=403, detail="Not enough permissions")
+            raise HTTPException(status_code=403, detail="Недостаточно прав")
 
         submission_file = submission_file_repo.get_latest_by_type(
             db=db,
@@ -270,12 +300,12 @@ class SubmissionService:
         )
 
         if submission_file is None:
-            raise HTTPException(status_code=404, detail="File not found")
+            raise HTTPException(status_code=404, detail="Файл не найден")
 
         file = db.query(File).filter(File.id == submission_file.file_id).first()
 
         if file is None:
-            raise HTTPException(status_code=404, detail="File metadata not found")
+            raise HTTPException(status_code=404, detail="Метаданные файла не найдены")
 
         response = minio_client.get_object(
             bucket_name=MINIO_BUCKET,
@@ -289,14 +319,14 @@ class SubmissionService:
         submission = submission_repo.get_by_id(db, submission_id)
 
         if submission is None:
-            raise HTTPException(status_code=404, detail="Submission not found")
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
 
         role = (
             db.query(ConferenceRole)
             .filter(
                 ConferenceRole.user_id == current_user.id,
                 ConferenceRole.conference_id == submission.conference_id,
-                ConferenceRole.role.in_(["admin", "chair"])
+                ConferenceRole.role.in_(["admin", "chair", "reviewer"])
             )
             .first()
         )
@@ -304,7 +334,7 @@ class SubmissionService:
         if role is None:
             raise HTTPException(
                 status_code=403,
-                detail="Only conference admin or chair can make final decision"
+                detail="Только администратор, председатель или рецензент конференции может выносить финальное решение"
             )
 
         allowed_decisions = [
@@ -317,7 +347,7 @@ class SubmissionService:
         if data.decision not in allowed_decisions:
             raise HTTPException(
                 status_code=400,
-                detail="Decision must be accepted_oral, accepted_poster, rejected or revision_required"
+                detail="Некорректное решение. Допустимо: accepted_oral, accepted_poster, rejected, revision_required"
             )
 
         submission.status = data.decision
@@ -327,4 +357,36 @@ class SubmissionService:
         db.commit()
         db.refresh(submission)
 
+        try:
+            self._notify_authors_about_decision(db, submission)
+        except Exception:
+            # не блокируем основной сценарий из-за почты
+            pass
+
+        return submission
+
+    def update_submission(self, db, submission_id, data, current_user):
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+        role = (
+            db.query(ConferenceRole)
+            .filter(
+                ConferenceRole.user_id == current_user.id,
+                ConferenceRole.conference_id == submission.conference_id,
+                ConferenceRole.role == "admin"
+            )
+            .first()
+        )
+
+        if role is None:
+            raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+        if "section_id" in data.model_fields_set:
+            submission.section_id = data.section_id
+
+        db.commit()
+        db.refresh(submission)
         return submission

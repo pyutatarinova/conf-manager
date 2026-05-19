@@ -61,3 +61,10 @@ export async function makeSubmissionDecision(submissionId, { decision, comment =
 export async function listChairMySubmissions() {
   return apiRequest('/submissions/chair/my', { method: 'GET' });
 }
+
+export async function updateSubmission(submissionId, { section_id = undefined } = {}) {
+  return apiRequest(`/submissions/${submissionId}`, {
+    method: 'PATCH',
+    body: { section_id }
+  });
+}

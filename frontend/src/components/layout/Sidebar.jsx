@@ -14,13 +14,13 @@ export default function Sidebar({ role, activeTab, setActiveTab, onLogout, onBac
       { id: 'program', icon: Calendar, label: 'Программа' }
     ],
     [ROLES.CHAIRMAN]: [
-      { id: 'main', icon: Users, label: 'Упр. секцией' },
+      { id: 'main', icon: Users, label: 'Секция' },
       { id: 'info', icon: Info, label: 'О конференции' },
       { id: 'program', icon: Calendar, label: 'Программа' }
     ],
     [ROLES.ADMIN]: [
       { id: 'info', icon: Info, label: 'Настройки' },
-      { id: 'users', icon: Users, label: 'Персонал' },
+      { id: 'users', icon: Users, label: 'Участники' },
       { id: 'submissions', icon: List, label: 'Секции/Работы' },
       { id: 'program', icon: Calendar, label: 'Программа' }
     ]
@@ -28,9 +28,6 @@ export default function Sidebar({ role, activeTab, setActiveTab, onLogout, onBac
 
   return (
     <aside className="w-20 md:w-64 bg-white border-r border-slate-200 p-4 flex flex-col shadow-[1px_0_0_rgba(0,0,0,0.05)] transition-all overflow-x-hidden">
-      <div className="mb-10 px-4 hidden md:block">
-        <p className="text-2xl font-black text-indigo-600 tracking-tighter">Event<span className="text-slate-900">Flow</span></p>
-      </div>
 
       <nav className="flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden">
         {options[role].map((item) => (

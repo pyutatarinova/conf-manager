@@ -8,7 +8,7 @@ import { createSection, updateSection } from '../../api/conferences';
 import { downloadSubmissionFileDirect } from '../../api/submissions';
 import { triggerBrowserDownload } from '../../utils/download';
 
-export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, updateSubmission }) {
+export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, reviewers = [], updateSubmission }) {
   const [newSecName, setNewSecName] = useState('');
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [sectionDescDraft, setSectionDescDraft] = useState('');
@@ -94,7 +94,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           {sections.map((s) => {
-            const chairmanName = chairmanBySectionId.get(s.id) || '—';
+            const chairmanName = s?.chairName || chairmanBySectionId.get(s.id) || '—';
             const isEditing = editingSectionId === s.id;
 
             return (
@@ -181,6 +181,17 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
               </div>
 
               <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-end flex-shrink-0">
+                <select
+                  value={sub.reviewerId || ''}
+                  onChange={(e) => updateSubmission(sub.id, { reviewerId: e.target.value || null })}
+                  className="text-xs font-bold bg-white border border-slate-200 shadow-sm rounded-lg px-3 py-2 outline-none"
+                  title="Назначить рецензента"
+                >
+                  <option value="">Рецензент…</option>
+                  {(reviewers || []).map((r) => (
+                    <option key={r.user_id} value={r.user_id}>{r.name}</option>
+                  ))}
+                </select>
                 <select
                   value={sub.sectionId}
                   onChange={(e) => updateSubmission(sub.id, { sectionId: e.target.value })}

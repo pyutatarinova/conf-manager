@@ -21,11 +21,11 @@ import AuthView from './components/common/AuthView';
 import InviteRegisterView from './components/common/InviteRegisterView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
 import { clearAccessToken, getAccessToken } from './api/client';
-import { createConference, listConferences, listSections } from './api/conferences';
+import { createConference, getMyConferenceRole, listConferenceReviewers, listConferenceStaff, listConferences, listSections } from './api/conferences';
 import { sendEmail } from './api/notifications';
 import { getMe } from './api/users';
-import { listConferenceSubmissions, listSubmissionAuthors, listChairMySubmissions, makeSubmissionDecision } from './api/submissions';
-import { assignReviewer, createReview, listMyReviewSubmissions, listSubmissionReviews } from './api/reviews';
+import { listConferenceSubmissions, listSubmissionAuthors, listChairMySubmissions, makeSubmissionDecision, updateSubmission as apiUpdateSubmission } from './api/submissions';
+import { assignReviewer, listMyReviewSubmissions, listSubmissionReviews } from './api/reviews';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -85,7 +85,7 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState('auth');
 
   const [usersTable, setUsersTable] = useState(INITIAL_USERS);
-  const [conferencesTable, setConferencesTable] = useState(INITIAL_CONFERENCES);
+  const [conferencesTable, setConferencesTable] = useState([]);
   const [conferenceRolesTable, setConferenceRolesTable] = useState(INITIAL_CONFERENCE_ROLES);
   const [sectionsTable, setSectionsTable] = useState(INITIAL_SECTIONS);
   const [submissionsTable, setSubmissionsTable] = useState(INITIAL_SUBMISSIONS);
@@ -95,8 +95,10 @@ export default function App() {
   const [reviewsTable, setReviewsTable] = useState(INITIAL_REVIEWS);
   const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState(INITIAL_REVIEW_ASSIGNMENTS);
   const [chairVisibleSubmissionIds, setChairVisibleSubmissionIds] = useState([]);
+  const [conferenceReviewers, setConferenceReviewers] = useState([]);
+  const [staffLoadedForConf, setStaffLoadedForConf] = useState(null);
 
-  const [activeConfId, setActiveConfId] = useState(INITIAL_CONFERENCES[0]?.id || null);
+  const [activeConfId, setActiveConfId] = useState(null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
 
   const safeSendEmail = (payload) => {
@@ -123,6 +125,24 @@ export default function App() {
         const me = await getMe();
         if (!isActive) return;
         setCurrentUser(me || null);
+        if (me?.id) {
+          setUsersTable((prev) => {
+            const nextUser = {
+              id: me.id,
+              name: me.name || '',
+              email: me.email || '',
+              password_hash: '',
+              affiliation: me.affiliation || '',
+              bio: me.bio || '',
+              created_at: me.created_at || nowIso()
+            };
+            const existingIdx = prev.findIndex((u) => u.id === me.id);
+            if (existingIdx === -1) return [...prev, nextUser];
+            const copy = [...prev];
+            copy[existingIdx] = { ...copy[existingIdx], ...nextUser };
+            return copy;
+          });
+        }
       } catch {
         if (!isActive) return;
         setCurrentUser(null);
@@ -146,7 +166,10 @@ export default function App() {
       try {
         const data = await listConferences();
         if (!isActive) return;
-        if (Array.isArray(data)) setConferencesTable(data);
+        if (Array.isArray(data)) {
+          setConferencesTable(data);
+          if (!activeConfId && data[0]?.id) setActiveConfId(data[0].id);
+        }
       } catch (e) {
         if (!isActive) return;
         setConferencesError(e?.message || 'Не удалось загрузить список конференций.');
@@ -177,6 +200,8 @@ export default function App() {
             id: s.id,
             conference_id: s.conference_id,
             chair_id: s.chair_id || null,
+            chair_name: s.chair_name || null,
+            chair_email: s.chair_email || null,
             name: s.name,
             description: s.description
           }));
@@ -193,6 +218,103 @@ export default function App() {
       isActive = false;
     };
   }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadRole() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await getMyConferenceRole(activeConfId);
+        if (!isActive) return;
+        const role = String(data?.role || '').trim();
+        if (role === 'admin') setCurrentRole(ROLES.ADMIN);
+        else if (role === 'chair') setCurrentRole(ROLES.CHAIRMAN);
+        else if (role === 'reviewer') setCurrentRole(ROLES.REVIEWER);
+        else setCurrentRole(ROLES.AUTHOR);
+      } catch {
+        if (!isActive) return;
+        setCurrentRole(ROLES.AUTHOR);
+      }
+    }
+
+    loadRole();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadStaff() {
+      if (!isAuthenticated || !activeConfId) return;
+      if (currentRole !== ROLES.ADMIN) return;
+      if (staffLoadedForConf === activeConfId) return;
+
+      try {
+        const data = await listConferenceStaff(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+
+        setUsersTable((prev) => {
+          const other = prev.filter((u) => !data.some((r) => r.user_id === u.id));
+          const next = data
+            .filter((r) => r.user_id)
+            .map((r) => ({
+              id: r.user_id,
+              name: r.user_name || '',
+              email: r.email || '',
+              password_hash: '',
+              affiliation: r.affiliation || '',
+              bio: '',
+              created_at: nowIso()
+            }));
+          return [...other, ...next];
+        });
+
+        setConferenceRolesTable((prev) => {
+          const other = prev.filter((r) => r.conference_id !== activeConfId);
+          const next = data.map((r) => ({
+            id: r.role_id,
+            user_id: r.user_id,
+            conference_id: r.conference_id,
+            role: r.role === 'chair' ? 'chairman' : r.role,
+            section_id: r.section_id || null
+          }));
+          return [...other, ...next];
+        });
+
+        setStaffLoadedForConf(activeConfId);
+      } catch {
+        // ignore
+      }
+    }
+
+    loadStaff();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId, currentRole, staffLoadedForConf]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadReviewers() {
+      if (!isAuthenticated || !activeConfId) return;
+      if (currentRole !== ROLES.ADMIN && currentRole !== ROLES.CHAIRMAN) return;
+      try {
+        const data = await listConferenceReviewers(activeConfId);
+        if (!isActive) return;
+        setConferenceReviewers(Array.isArray(data) ? data : []);
+      } catch {
+        if (!isActive) return;
+        setConferenceReviewers([]);
+      }
+    }
+
+    loadReviewers();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId, currentRole]);
 
   useEffect(() => {
     let isActive = true;
@@ -463,7 +585,15 @@ export default function App() {
   const curSections = useMemo(
     () => sectionsTable
       .filter((s) => s.conference_id === activeConfId)
-      .map((s) => ({ id: s.id, conferenceId: s.conference_id, chairId: s.chair_id || null, name: s.name, description: s.description })),
+      .map((s) => ({
+        id: s.id,
+        conferenceId: s.conference_id,
+        chairId: s.chair_id || null,
+        chairName: s.chair_name || null,
+        chairEmail: s.chair_email || null,
+        name: s.name,
+        description: s.description
+      })),
     [sectionsTable, activeConfId]
   );
 
@@ -557,8 +687,8 @@ export default function App() {
     return curSubmissions.filter((s) => allowed.has(s.id));
   }, [curSubmissions, currentRole, chairVisibleSubmissionIds]);
 
-  const currentReviewerId = curUsers.find((u) => u.role === 'reviewer')?.id || null;
-  const currentChairmanId = currentUser?.id || (curUsers.find((u) => u.role === 'chairman')?.id || null);
+  const currentReviewerId = currentRole === ROLES.REVIEWER ? (currentUser?.id || null) : null;
+  const currentChairmanId = currentRole === ROLES.CHAIRMAN ? (currentUser?.id || null) : null;
 
   const setConferences = (nextConferences) => {
     setConferencesTable((prev) => prev.map((conf) => {
@@ -576,22 +706,23 @@ export default function App() {
       }));
     };
 
-  const setSections = (nextSectionsLegacy) => {
-    setSectionsTable((prev) => {
-      let next = prev.filter((s) => s.conference_id !== activeConfId);
-      const updatedForConf = nextSectionsLegacy.map((s) => {
-        const existing = prev.find((p) => p.id === s.id);
-        return {
-          id: s.id || uuid(),
-          conference_id: activeConfId,
-          name: s.name,
-          description: s.description,
-          ...(existing ? {} : {})
-        };
-      });
-      return [...next, ...updatedForConf];
-    });
-  };
+	  const setSections = (nextSectionsLegacy) => {
+	    setSectionsTable((prev) => {
+	      let next = prev.filter((s) => s.conference_id !== activeConfId);
+	      const updatedForConf = nextSectionsLegacy.map((s) => {
+	        const existing = prev.find((p) => p.id === s.id);
+	        return {
+	          id: s.id || uuid(),
+	          conference_id: activeConfId,
+	          chair_id: s.chairId ?? existing?.chair_id ?? null,
+	          name: s.name,
+	          description: s.description,
+	          ...(existing ? {} : {})
+	        };
+	      });
+	      return [...next, ...updatedForConf];
+	    });
+	  };
 
   const setUsers = (nextUsersLegacy) => {
     const existingById = new Map(usersTable.map((u) => [u.id, u]));
@@ -773,11 +904,7 @@ export default function App() {
       (async () => {
         const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
         if (!decision) return;
-        await createReview({
-          submission_id: id,
-          decision,
-          comments: updates.reviewText || ''
-        });
+        await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
         await refreshSubmissions?.(activeConfId);
       })().catch(() => {});
       return;
@@ -787,6 +914,14 @@ export default function App() {
       (async () => {
         if (!updates.reviewerId) return;
         await assignReviewer({ submission_id: id, reviewer_id: updates.reviewerId });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'admin' && updates?.sectionId !== undefined) {
+      (async () => {
+        await apiUpdateSubmission(id, { section_id: updates.sectionId || null });
         await refreshSubmissions?.(activeConfId);
       })().catch(() => {});
       return;
@@ -1005,6 +1140,12 @@ export default function App() {
             setActiveConfId(conferenceId);
             setIsConferenceSelected(true);
           }}
+          onLogout={() => {
+            clearAccessToken();
+            setIsAuthenticated(false);
+            setIsConferenceSelected(false);
+            setIsCreateConfOpen(false);
+          }}
           loading={conferencesLoading}
           error={conferencesError}
         />
@@ -1079,11 +1220,16 @@ export default function App() {
           </p>
         </div>
 
-        <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-xl border border-slate-200 ml-4 flex-shrink-0">
+	        <div className="hidden">
+	          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Роль</span>
+	          <span className="text-sm font-black text-indigo-600">
+	            {currentRole === ROLES.ADMIN ? 'Администратор' : currentRole === ROLES.CHAIRMAN ? 'Председатель' : currentRole === ROLES.REVIEWER ? 'Рецензент' : 'Автор'}
+	          </span>
           <select
-            className="bg-transparent border-none text-sm font-bold rounded-lg px-3 py-1.5 focus:ring-0 outline-none cursor-pointer text-indigo-600"
+            className="hidden"
             value={currentRole}
-            onChange={(e) => setCurrentRole(e.target.value)}
+	            onChange={() => {}}
+	            disabled
           >
             <option value={ROLES.AUTHOR}>Автор</option>
             <option value={ROLES.REVIEWER}>Рецензент</option>
@@ -1129,12 +1275,14 @@ export default function App() {
             )}
             {activeTab === 'main' && currentRole === ROLES.CHAIRMAN && (
               <ChairmanView
+                activeConfId={activeConfId}
                 submissions={chairmanScopedSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.CHAIRMAN)}
                 sections={curSections}
                 setSections={setSections}
                 users={curUsers}
                 chairmanId={currentChairmanId}
+                reviewers={conferenceReviewers}
               />
             )}
 
@@ -1144,7 +1292,7 @@ export default function App() {
             {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} />}
 
             {activeTab === 'users' && currentRole === ROLES.ADMIN && <AdminUsersView activeConfId={activeConfId} users={curUsers} setUsers={setUsers} submissions={curSubmissions} sections={curSections} />}
-            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}
+            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} reviewers={conferenceReviewers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}
           </div>
         </main>
       </div>

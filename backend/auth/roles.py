@@ -28,7 +28,7 @@ def require_conference_role(required_roles: list[str]):
         if role is None:
             raise HTTPException(
                 status_code=403,
-                detail="Not enough permissions"
+                detail="Недостаточно прав"
             )
 
         return current_user

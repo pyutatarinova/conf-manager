@@ -24,3 +24,10 @@ class ReviewAssignmentRepository:
             .filter(ReviewAssignment.reviewer_id == reviewer_id)
             .all()
         )
+
+    def list_by_submission(self, db, submission_id):
+        return (
+            db.query(ReviewAssignment)
+            .filter(ReviewAssignment.submission_id == submission_id)
+            .all()
+        )

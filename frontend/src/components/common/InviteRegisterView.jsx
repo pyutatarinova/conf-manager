@@ -54,7 +54,7 @@ export default function InviteRegisterView({ onAuth, onBack }) {
           <p className="text-slate-400 mt-2 font-medium">Введите ФИО, токен и пароль</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <input
             required
             type="text"
@@ -63,6 +63,7 @@ export default function InviteRegisterView({ onAuth, onBack }) {
             className="w-full border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
             placeholder="ФИО"
             disabled={isSubmitting}
+            autoComplete="new-password"
           />
 
           <input

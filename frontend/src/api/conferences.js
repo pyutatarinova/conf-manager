@@ -40,6 +40,26 @@ export async function listSections(conferenceId) {
   return apiRequest(`/conferences/${conferenceId}/sections`, { method: 'GET' });
 }
 
+export async function listParticipants(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/participants`, { method: 'GET' });
+}
+
+export async function listConferenceReviewers(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/reviewers`, { method: 'GET' });
+}
+
+export async function deleteParticipant(conferenceId, inviteId) {
+  return apiRequest(`/conferences/${conferenceId}/participants/${inviteId}`, { method: 'DELETE' });
+}
+
+export async function getMyConferenceRole(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/my-role`, { method: 'GET' });
+}
+
+export async function listConferenceStaff(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/staff`, { method: 'GET' });
+}
+
 export async function updateSection(conferenceId, sectionId, { name, description }) {
   return apiRequest(`/conferences/${conferenceId}/sections/${sectionId}`, {
     method: 'PUT',
