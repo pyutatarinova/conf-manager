@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from datetime import datetime
 
 from models.file import File
 from models.submission import Submission
@@ -470,7 +471,7 @@ class SubmissionService:
             "final_comment": submission.final_comment,
             "current_file_id": str(submission.current_file_id) if submission.current_file_id else None,
             "revision_count": submission.revision_count,
-            "is_best": submission.is_best,
+            "is_in_program": submission.is_in_program,
             "created_at": submission.created_at,
             "updated_at": submission.updated_at,
 
@@ -501,3 +502,133 @@ class SubmissionService:
             "assigned_reviewers": assigned_reviewers,
             "reviews": review_items
         }
+  
+    def toggle_program_inclusion(self, db, submission_id, data, current_user):
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        if submission.status == "rejected":
+            raise HTTPException(
+                status_code=400,
+                detail="Rejected submission cannot be included in program"
+            )
+
+        section = (
+            db.query(Section)
+            .filter(Section.id == submission.section_id)
+            .first()
+        )
+
+        if section is None:
+            raise HTTPException(status_code=404, detail="Section not found")
+
+        is_section_chair = section.chair_id == current_user.id
+
+        is_admin = (
+            db.query(ConferenceRole)
+            .filter(
+                ConferenceRole.user_id == current_user.id,
+                ConferenceRole.conference_id == submission.conference_id,
+                ConferenceRole.role == "admin"
+            )
+            .first()
+            is not None
+        )
+
+        if not is_section_chair and not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Only section chair or conference admin can change program inclusion"
+            )
+
+        submission.is_in_program = data.is_in_program
+        submission.updated_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(submission)
+
+        return submission
+    
+    def upload_revision(self, db, submission_id, data, current_user):
+        submission = submission_repo.get_by_id(db, submission_id)
+
+        if submission is None:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        if submission.status != "revision_required":
+            raise HTTPException(
+                status_code=400,
+                detail="Revision can be uploaded only when status is revision_required"
+            )
+
+        article_file = (
+            db.query(File)
+            .filter(File.id == data.article_file_id)
+            .first()
+        )
+
+        if article_file is None:
+            raise HTTPException(status_code=404, detail="Article file not found")
+
+        abstract_file = (
+            db.query(File)
+            .filter(File.id == data.abstract_file_id)
+            .first()
+        )
+
+        if abstract_file is None:
+            raise HTTPException(status_code=404, detail="Abstract file not found")
+
+        if article_file.uploaded_by != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can use only your own article file"
+            )
+
+        if abstract_file.uploaded_by != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can use only your own abstract file"
+            )
+
+        if article_file.id == abstract_file.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Article file and abstract file must be different"
+            )
+
+        latest_version = submission_file_repo.get_max_version(
+            db=db,
+            submission_id=submission.id
+        )
+
+        new_version = latest_version + 1
+
+        article_submission_file = SubmissionFile(
+            submission_id=submission.id,
+            file_id=data.article_file_id,
+            version=new_version,
+            file_type="article"
+        )
+
+        abstract_submission_file = SubmissionFile(
+            submission_id=submission.id,
+            file_id=data.abstract_file_id,
+            version=new_version,
+            file_type="abstract"
+        )
+
+        submission_file_repo.create(db, article_submission_file)
+        submission_file_repo.create(db, abstract_submission_file)
+
+        submission.current_file_id = data.article_file_id
+        submission.revision_count = new_version
+        submission.status = "resubmitted"
+        submission.updated_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(submission)
+
+        return submission

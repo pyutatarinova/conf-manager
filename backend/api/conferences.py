@@ -420,3 +420,46 @@ def remove_conference_participant(
         conference_id=conference_id,
         invite_id=invite_id
     )
+
+@router.get("/{conference_id}/program")
+def get_conference_program(
+    conference_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from models.section import Section
+    from models.submission import Submission
+    from services.submission_service import SubmissionService
+
+    submission_service = SubmissionService()
+
+    sections = (
+        db.query(Section)
+        .filter(Section.conference_id == conference_id)
+        .all()
+    )
+
+    result = []
+
+    for section in sections:
+        submissions = (
+            db.query(Submission)
+            .filter(
+                Submission.section_id == section.id,
+                Submission.is_in_program == True,
+                Submission.status != "rejected"
+            )
+            .all()
+        )
+
+        result.append({
+            "section_id": str(section.id),
+            "section_name": section.name,
+            "section_description": section.description,
+            "submissions": [
+                submission_service.build_submission_response(db, submission)
+                for submission in submissions
+            ]
+        })
+
+    return result

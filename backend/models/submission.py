@@ -38,7 +38,7 @@ class Submission(Base):
 
     revision_count = Column(Integer, default=1, nullable=False)
 
-    is_best = Column(Boolean, default=False, nullable=False)
+    is_in_program = Column(Boolean, default=False, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

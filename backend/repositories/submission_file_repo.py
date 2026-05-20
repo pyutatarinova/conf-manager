@@ -27,3 +27,13 @@ class SubmissionFileRepository:
             .order_by(SubmissionFile.version.desc())
             .first()
         )
+    
+    def get_max_version(self, db, submission_id):
+        latest = (
+            db.query(SubmissionFile)
+            .filter(SubmissionFile.submission_id == submission_id)
+            .order_by(SubmissionFile.version.desc())
+            .first()
+        )
+
+        return latest.version if latest else 0

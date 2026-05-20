@@ -15,7 +15,9 @@ from services.submission_service import SubmissionService
 from schemas.submission_author import SubmissionAuthorCreate
 from schemas.submission_decision import SubmissionDecisionCreate
 from schemas.submission_update import SubmissionUpdate
+from schemas.program import ProgramToggleRequest
 from services.submission_author_service import SubmissionAuthorService
+from schemas.submission_revision import SubmissionRevisionCreate
 
 
 router = APIRouter()
@@ -273,3 +275,35 @@ def list_my_section_submissions(
         submission_service.build_submission_response(db, submission)
         for submission in submissions
     ]
+
+@router.patch("/{submission_id}/program")
+def toggle_submission_program(
+    submission_id: UUID,
+    data: ProgramToggleRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    submission = submission_service.toggle_program_inclusion(
+        db=db,
+        submission_id=submission_id,
+        data=data,
+        current_user=current_user
+    )
+
+    return submission_service.build_submission_response(db, submission)
+
+@router.post("/{submission_id}/revision")
+def upload_submission_revision(
+    submission_id: UUID,
+    data: SubmissionRevisionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    submission = submission_service.upload_revision(
+        db=db,
+        submission_id=submission_id,
+        data=data,
+        current_user=current_user
+    )
+
+    return submission_service.build_submission_response(db, submission)
