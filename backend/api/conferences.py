@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from models.section import Section
+from models.submission import Submission
+from models.invite import Invite
 
 from auth.admin import require_superadmin
 from auth.dependencies import get_current_user
@@ -252,6 +254,71 @@ def update_section(
         "name": section.name,
         "description": section.description,
     }
+
+
+@router.delete("/{conference_id}/sections/{section_id}", status_code=204)
+def delete_section(
+    conference_id: UUID,
+    section_id: UUID,
+    current_user: User = Depends(require_conference_role(["admin"])),
+    db: Session = Depends(get_db),
+):
+    section = (
+        db.query(Section)
+        .filter(Section.id == section_id, Section.conference_id == conference_id)
+        .first()
+    )
+
+    if section is None:
+        raise HTTPException(status_code=404, detail="Секция не найдена")
+
+    has_submissions = (
+        db.query(Submission.id)
+        .filter(Submission.section_id == section_id)
+        .first()
+        is not None
+    )
+
+    if has_submissions:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить секцию: в ней уже есть заявки. Сначала перенесите заявки в другую секцию."
+        )
+
+    if section.chair_id is not None:
+        chair_user = db.query(UserModel).filter(UserModel.id == section.chair_id).first()
+
+        role_row = (
+            db.query(ConferenceRole)
+            .filter(
+                ConferenceRole.conference_id == conference_id,
+                ConferenceRole.user_id == section.chair_id,
+                ConferenceRole.role == "chair",
+            )
+            .first()
+        )
+        if role_row is not None:
+            db.delete(role_row)
+
+        if chair_user is not None:
+            used_invite = (
+                db.query(Invite)
+                .filter(
+                    Invite.conference_id == conference_id,
+                    Invite.email == chair_user.email,
+                    Invite.role == "chair",
+                    Invite.is_used == True,  # noqa: E712
+                )
+                .first()
+            )
+            if used_invite is not None:
+                db.delete(used_invite)
+
+        section.chair_id = None
+
+    db.delete(section)
+    db.commit()
+    return None
 
 
 @router.get("/{conference_id}/my-role")

@@ -67,6 +67,10 @@ export async function updateSection(conferenceId, sectionId, { name, description
   });
 }
 
+export async function deleteSection(conferenceId, sectionId) {
+  return apiRequest(`/conferences/${conferenceId}/sections/${sectionId}`, { method: 'DELETE' });
+}
+
 export async function updateConference(conferenceId, { title, description, start_date, submission_deadline, is_public, is_submit }) {
   return apiRequest(`/conferences/${conferenceId}`, {
     method: 'PUT',

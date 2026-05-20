@@ -4,7 +4,7 @@ import { FileDown, Plus, Trash2, List, FileText, Pencil } from 'lucide-react';
 import { getAuthorsString } from '../../utils/helpers';
 import StatusBadge from '../../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../../components/ui/SubmissionDetailsModal';
-import { createSection, updateSection } from '../../api/conferences';
+import { createSection, deleteSection, updateSection } from '../../api/conferences';
 import { downloadSubmissionFileDirect } from '../../api/submissions';
 import { triggerBrowserDownload } from '../../utils/download';
 
@@ -70,6 +70,17 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
     setSectionDescDraft('');
   };
 
+  const removeSection = async (sectionId) => {
+    if (!sectionId || !activeConfId) return;
+    setSectionError('');
+    try {
+      await deleteSection(activeConfId, sectionId);
+      setSections(sections.filter((x) => x.id !== sectionId));
+    } catch (e) {
+      setSectionError(e?.message || 'Не удалось удалить секцию.');
+    }
+  };
+
   const chairmanBySectionId = useMemo(() => {
     const map = new Map();
     (users || [])
@@ -113,7 +124,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setSections(sections.filter((x) => x.id !== s.id))} className="text-slate-300 hover:text-red-500 p-2 bg-white rounded-xl border border-slate-200" type="button">
+                    <button onClick={() => void removeSection(s.id)} className="text-slate-300 hover:text-red-500 p-2 bg-white rounded-xl border border-slate-200" type="button">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>

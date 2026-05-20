@@ -24,8 +24,8 @@ import { clearAccessToken, getAccessToken } from './api/client';
 import { createConference, getMyConferenceRole, listConferenceReviewers, listConferenceStaff, listConferences, listSections } from './api/conferences';
 import { sendEmail } from './api/notifications';
 import { getMe } from './api/users';
-import { listConferenceSubmissions, listSubmissionAuthors, listChairMySubmissions, makeSubmissionDecision, updateSubmission as apiUpdateSubmission } from './api/submissions';
-import { assignReviewer, listMyReviewSubmissions, listSubmissionReviews } from './api/reviews';
+import { listConferenceSubmissions, listChairMySubmissions, makeSubmissionDecision, updateSubmission as apiUpdateSubmission } from './api/submissions';
+import { assignReviewer, listMyReviewSubmissions } from './api/reviews';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -304,7 +304,28 @@ export default function App() {
       try {
         const data = await listConferenceReviewers(activeConfId);
         if (!isActive) return;
-        setConferenceReviewers(Array.isArray(data) ? data : []);
+        const reviewers = Array.isArray(data) ? data : [];
+        setConferenceReviewers(reviewers);
+        setUsersTable((prev) => {
+          const next = [...prev];
+          reviewers.forEach((r) => {
+            const id = r.id || r.user_id;
+            if (!id) return;
+            const idx = next.findIndex((u) => u.id === id);
+            const userRow = {
+              id,
+              name: r.name || '',
+              email: r.email || '',
+              password_hash: '',
+              affiliation: r.affiliation || '',
+              bio: '',
+              created_at: nowIso()
+            };
+            if (idx === -1) next.push(userRow);
+            else next[idx] = { ...next[idx], ...userRow };
+          });
+          return next;
+        });
       } catch {
         if (!isActive) return;
         setConferenceReviewers([]);
@@ -348,12 +369,13 @@ export default function App() {
         const data = await listMyReviewSubmissions();
         if (!isActive) return;
         if (!Array.isArray(data)) return;
-        setReviewAssignmentsTable(() => data.map((a) => ({
-          id: a.assignment_id || uuid(),
-          submission_id: a.submission_id,
+        // /reviews/my-submissions теперь возвращает полную инфу по заявкам + assignment_id/assigned_at
+        setReviewAssignmentsTable(() => data.map((s) => ({
+          id: s.assignment_id || uuid(),
+          submission_id: s.id,
           reviewer_id: currentUser.id,
-          assigned_by: a.assigned_by || null,
-          created_at: a.assigned_at || nowIso()
+          assigned_by: null,
+          created_at: s.assigned_at || nowIso()
         })));
       } catch {
         // ignore (may not be reviewer)
@@ -387,6 +409,7 @@ export default function App() {
           current_file_id: s.current_file_id || null,
           revision_count: s.revision_count ?? 1,
           is_best: s.is_best ?? false,
+          reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
           created_at: s.created_at || nowIso(),
           updated_at: s.updated_at || nowIso()
         }));
@@ -396,27 +419,14 @@ export default function App() {
           return [...withoutConf, ...normalizedSubmissions];
         });
 
-        const authorsBySubmission = await Promise.all(
-          normalizedSubmissions.map(async (s) => {
-            try {
-              const authors = await listSubmissionAuthors(s.id);
-              return { submissionId: s.id, authors: Array.isArray(authors) ? authors : [] };
-            } catch {
-              return { submissionId: s.id, authors: [] };
-            }
-          })
-        );
-
-        if (!isActive) return;
-
         setSubmissionAuthorsTable((prev) => {
           const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
           const next = [];
-          authorsBySubmission.forEach(({ submissionId, authors }) => {
-            authors.forEach((a) => {
+          data.forEach((s) => {
+            (s.authors || []).forEach((a) => {
               next.push({
                 id: a.id || uuid(),
-                submission_id: submissionId,
+                submission_id: s.id,
                 user_id: a.user_id || null,
                 name: a.name,
                 email: a.email,
@@ -429,27 +439,14 @@ export default function App() {
           return [...remaining, ...next];
         });
 
-        const reviewsBySubmission = await Promise.all(
-          normalizedSubmissions.map(async (s) => {
-            try {
-              const reviews = await listSubmissionReviews(s.id);
-              return { submissionId: s.id, reviews: Array.isArray(reviews) ? reviews : [] };
-            } catch {
-              return { submissionId: s.id, reviews: [] };
-            }
-          })
-        );
-
-        if (!isActive) return;
-
         setReviewsTable((prev) => {
           const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
           const next = [];
-          reviewsBySubmission.forEach(({ submissionId, reviews }) => {
-            reviews.forEach((r) => {
+          data.forEach((s) => {
+            (s.reviews || []).forEach((r) => {
               next.push({
                 id: r.id || uuid(),
-                submission_id: submissionId,
+                submission_id: s.id,
                 reviewer_id: r.reviewer_id || null,
                 decision: normalizeSubmissionStatus(r.decision),
                 comments: r.comments || '',
@@ -457,6 +454,24 @@ export default function App() {
                 revision_round: r.revision_round ?? 1,
                 created_at: r.created_at || nowIso(),
                 updated_at: r.updated_at || r.created_at || nowIso()
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
+
+        setSubmissionFilesTable((prev) => {
+          const remaining = prev.filter((f) => !normalizedSubmissions.some((s) => s.id === f.submission_id));
+          const next = [];
+          data.forEach((s) => {
+            (s.files || []).forEach((f) => {
+              next.push({
+                id: f.id || uuid(),
+                submission_id: s.id,
+                file_id: f.file_id,
+                version: f.version ?? 1,
+                file_type: f.file_type,
+                uploaded_at: f.uploaded_at || nowIso()
               });
             });
           });
@@ -489,6 +504,7 @@ export default function App() {
       current_file_id: s.current_file_id || null,
       revision_count: s.revision_count ?? 1,
       is_best: s.is_best ?? false,
+      reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
       created_at: s.created_at || nowIso(),
       updated_at: s.updated_at || nowIso()
     }));
@@ -498,25 +514,14 @@ export default function App() {
       return [...withoutConf, ...normalizedSubmissions];
     });
 
-    const authorsBySubmission = await Promise.all(
-      normalizedSubmissions.map(async (s) => {
-        try {
-          const authors = await listSubmissionAuthors(s.id);
-          return { submissionId: s.id, authors: Array.isArray(authors) ? authors : [] };
-        } catch {
-          return { submissionId: s.id, authors: [] };
-        }
-      })
-    );
-
     setSubmissionAuthorsTable((prev) => {
       const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
       const next = [];
-      authorsBySubmission.forEach(({ submissionId, authors }) => {
-        authors.forEach((a) => {
+      data.forEach((s) => {
+        (s.authors || []).forEach((a) => {
           next.push({
             id: a.id || uuid(),
-            submission_id: submissionId,
+            submission_id: s.id,
             user_id: a.user_id || null,
             name: a.name,
             email: a.email,
@@ -529,25 +534,14 @@ export default function App() {
       return [...remaining, ...next];
     });
 
-    const reviewsBySubmission = await Promise.all(
-      normalizedSubmissions.map(async (s) => {
-        try {
-          const reviews = await listSubmissionReviews(s.id);
-          return { submissionId: s.id, reviews: Array.isArray(reviews) ? reviews : [] };
-        } catch {
-          return { submissionId: s.id, reviews: [] };
-        }
-      })
-    );
-
     setReviewsTable((prev) => {
       const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
       const next = [];
-      reviewsBySubmission.forEach(({ submissionId, reviews }) => {
-        reviews.forEach((r) => {
+      data.forEach((s) => {
+        (s.reviews || []).forEach((r) => {
           next.push({
             id: r.id || uuid(),
-            submission_id: submissionId,
+            submission_id: s.id,
             reviewer_id: r.reviewer_id || null,
             decision: normalizeSubmissionStatus(r.decision),
             comments: r.comments || '',
@@ -555,6 +549,24 @@ export default function App() {
             revision_round: r.revision_round ?? 1,
             created_at: r.created_at || nowIso(),
             updated_at: r.updated_at || r.created_at || nowIso()
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
+
+    setSubmissionFilesTable((prev) => {
+      const remaining = prev.filter((f) => !normalizedSubmissions.some((s) => s.id === f.submission_id));
+      const next = [];
+      data.forEach((s) => {
+        (s.files || []).forEach((f) => {
+          next.push({
+            id: f.id || uuid(),
+            submission_id: s.id,
+            file_id: f.file_id,
+            version: f.version ?? 1,
+            file_type: f.file_type,
+            uploaded_at: f.uploaded_at || nowIso()
           });
         });
       });
@@ -639,8 +651,6 @@ export default function App() {
           .filter((r) => r.submission_id === s.id && r.revision_round === s.revision_count)
           .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))[0];
 
-        const assignment = reviewAssignmentsTable.find((a) => a.submission_id === s.id);
-
         return {
           id: s.id,
           conferenceId: s.conference_id,
@@ -655,7 +665,7 @@ export default function App() {
           status: s.status,
           revisionCount: s.revision_count,
           reviewText: s.final_comment || latestReview?.comments || '',
-          reviewerId: assignment?.reviewer_id || null,
+          reviewerId: s.reviewer_id || null,
           isBest: Boolean(s.is_best),
           reviewerLocked: s.reviewer_locked_round === s.revision_count,
           chairmanLocked: s.chairman_locked_round === s.revision_count,
@@ -663,7 +673,7 @@ export default function App() {
           chairmanLockedRound: s.chairman_locked_round ?? null
         };
       });
-  }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, reviewAssignmentsTable, activeConfId]);
+  }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, activeConfId]);
 
   const visibleSubmissions = useMemo(() => {
     if (currentRole !== ROLES.AUTHOR) return curSubmissions;

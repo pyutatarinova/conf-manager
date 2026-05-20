@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = 'http://localhost:8000';
+const DEFAULT_BASE_URL = '/api';
 
 export const ACCESS_TOKEN_STORAGE_KEY = 'access_token';
 

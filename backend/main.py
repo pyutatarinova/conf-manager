@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -24,12 +26,13 @@ from models.review import Review
 
 app = FastAPI(
     title="Conference Platform API",
-    version="1.0.0"
+    version="1.0.0",
+    root_path=os.getenv("ROOT_PATH", "")
 )
 
+frontend_base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost").rstrip("/")
 allowed_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    frontend_base_url,
 ]
 
 app.add_middleware(
