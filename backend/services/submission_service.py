@@ -38,6 +38,7 @@ class SubmissionService:
 
         status_map = {
             "revision_required": "Отправлено на доработку",
+            "revision_submitted": "Загружена исправленная работа",
             "rejected": "Отклонено",
             "accepted_oral": "Принято (устный доклад)",
             "accepted_poster": "Принято (постер)",
@@ -271,7 +272,10 @@ class SubmissionService:
         if file is None:
             raise HTTPException(status_code=404, detail="Метаданные файла не найдены")
 
-        download_url = get_presigned_download_url(file.storage_path)
+        download_url = minio_client.presigned_get_object(
+            bucket_name=MINIO_BUCKET,
+            object_name=file.storage_path
+        )
 
         return {
             "file_id": str(file.id),
@@ -465,7 +469,7 @@ class SubmissionService:
         return {
             "id": str(submission.id),
             "conference_id": str(submission.conference_id),
-            "section_id": str(submission.section_id),
+            "section_id": str(submission.section_id) if submission.section_id else None,
             "title": submission.title,
             "status": submission.status,
             "final_comment": submission.final_comment,
@@ -557,7 +561,7 @@ class SubmissionService:
         if submission is None:
             raise HTTPException(status_code=404, detail="Submission not found")
 
-        if submission.status != "revision_required":
+        if submission.status not in ["revision_required", "needs_revision"]:
             raise HTTPException(
                 status_code=400,
                 detail="Revision can be uploaded only when status is revision_required"
@@ -625,7 +629,7 @@ class SubmissionService:
 
         submission.current_file_id = data.article_file_id
         submission.revision_count = new_version
-        submission.status = "resubmitted"
+        submission.status = "revision_submitted"
         submission.updated_at = datetime.utcnow()
 
         db.commit()

@@ -1,12 +1,14 @@
 ﻿import React, { useState } from 'react';
-import { CheckCircle, FileDown, Eye, FileText } from 'lucide-react';
+import { CheckCircle, FileDown, Eye, FileText, List } from 'lucide-react';
 
 import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 import { downloadSubmissionFileDirect } from '../api/submissions';
 import { triggerBrowserDownload } from '../utils/download';
 
-export default function ReviewerView({ submissions, updateSubmission, currentReviewerId }) {
+const REVIEWER_STATUS_VALUES = new Set(['reviewing', 'accepted_oral', 'accepted_poster', 'needs_revision', 'rejected']);
+
+export default function ReviewerView({ submissions, sections = [], updateSubmission, currentReviewerId }) {
   const [activeReviewId, setActiveReviewId] = useState(null);
   const [reviewInput, setReviewInput] = useState('');
   const [statusInput, setStatusInput] = useState('reviewing');
@@ -63,6 +65,11 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                   <div className="text-sm text-slate-600 font-medium">
                     {getAuthorsString(sub)}
                   </div>
+                  <div className="flex flex-wrap items-center gap-4 text-[10px] font-black uppercase tracking-widest text-indigo-400">
+                    <div className="flex items-center gap-1.5">
+                      <List className="w-3.5 h-3.5" /> {(sections || []).find((s) => s.id === sub.sectionId)?.name || '—'}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
@@ -91,7 +98,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                       onClick={() => {
                         setActiveReviewId(sub.id);
                         setReviewInput(sub.reviewText || '');
-                        setStatusInput(sub.status || 'reviewing');
+                        setStatusInput(REVIEWER_STATUS_VALUES.has(sub.status) ? sub.status : 'reviewing');
                       }}
                       className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-shadow shadow-md whitespace-nowrap"
                     >
@@ -103,7 +110,7 @@ export default function ReviewerView({ submissions, updateSubmission, currentRev
                       onClick={() => {
                         setActiveReviewId(activeReviewId === sub.id ? null : sub.id);
                         setReviewInput(sub.reviewText || '');
-                        setStatusInput(sub.status || 'reviewing');
+                        setStatusInput(REVIEWER_STATUS_VALUES.has(sub.status) ? sub.status : 'reviewing');
                       }}
                       className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
                       title="Просмотр оценки"

@@ -68,3 +68,17 @@ export async function updateSubmission(submissionId, { section_id = undefined } 
     body: { section_id }
   });
 }
+
+export async function toggleSubmissionProgram(submissionId, is_in_program) {
+  return apiRequest(`/submissions/${submissionId}/program`, {
+    method: 'PATCH',
+    body: { is_in_program }
+  });
+}
+
+export async function createSubmissionRevision(submissionId, { article_file_id, abstract_file_id }) {
+  return apiRequest(`/submissions/${submissionId}/revision`, {
+    method: 'POST',
+    body: { article_file_id, abstract_file_id }
+  });
+}

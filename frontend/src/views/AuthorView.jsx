@@ -8,7 +8,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import { getAuthorsString } from '../utils/helpers';
 
 import { uploadFile } from '../api/files';
-import { addSubmissionAuthor, createSubmission, downloadSubmissionFileDirect } from '../api/submissions';
+import { addSubmissionAuthor, createSubmission, createSubmissionRevision, downloadSubmissionFileDirect } from '../api/submissions';
 import { triggerBrowserDownload } from '../utils/download';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.docx';
@@ -159,14 +159,9 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
         const thesisFileId = uploadedThesis?.id;
         if (!thesisFileId) throw new Error('Не удалось загрузить исправленную версию тезиса.');
 
-        updateSubmission(sub.id, {
-          status: 'reviewing',
-          revisionCount: sub.revisionCount + 1,
-          fileName: files.paper.name || sub.fileName,
-          thesisFileName: files.thesis.name || sub.thesisFileName,
-          reviewText: '',
-          backendFileId: fileId,
-          backendThesisFileId: thesisFileId
+        await createSubmissionRevision(sub.id, {
+          article_file_id: fileId,
+          abstract_file_id: thesisFileId
         });
 
         await refreshSubmissions?.(activeConfId);
@@ -276,6 +271,7 @@ export default function AuthorView({ activeConfId, currentUser, sendEmail, isSub
             <div className="p-6 md:p-8 space-y-4">
               <div className="flex items-center gap-3">
                 <StatusBadge status={sub.status} />
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Версия {sub.revisionCount}</span>
               </div>
 
               <div className="space-y-2">

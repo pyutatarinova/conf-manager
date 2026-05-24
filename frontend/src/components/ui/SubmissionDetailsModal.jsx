@@ -10,9 +10,10 @@ const STATUS_OPTIONS = [
   { value: 'reviewing', label: 'На рецензировании' },
   { value: 'accepted_oral', label: 'Принята (устно)' },
   { value: 'accepted_poster', label: 'Принята (постер)' },
-  { value: 'needs_revision', label: 'Доработка' },
+  { value: 'needs_revision', label: 'На доработку' },
   { value: 'rejected', label: 'Отклонена' }
 ];
+const EDITABLE_STATUS_VALUES = new Set(STATUS_OPTIONS.map((x) => x.value));
 
 export default function SubmissionDetailsModal({
   isOpen,
@@ -30,7 +31,8 @@ export default function SubmissionDetailsModal({
 
   useEffect(() => {
     if (!isOpen || !submission) return;
-    setStatusDraft(submission.status || 'reviewing');
+    const normalizedStatus = EDITABLE_STATUS_VALUES.has(submission.status) ? submission.status : 'reviewing';
+    setStatusDraft(normalizedStatus);
     setReviewDraft(submission.reviewText || '');
   }, [isOpen, submission]);
 
@@ -82,37 +84,18 @@ export default function SubmissionDetailsModal({
     return reviewer?.name || '—';
   }, [users, submission]);
 
-  const isChairmanLocked = Boolean(submission?.chairmanLocked);
-  const isReviewerLocked = Boolean(submission?.reviewerLocked);
-
-  const canEdit =
-    role === 'admin'
-    || (role === 'chairman' && !isChairmanLocked);
+  const canEdit = role === 'admin' || role === 'chairman';
 
   const hasChanges = Boolean(submission) && (
     statusDraft !== submission.status
     || reviewDraft !== (submission.reviewText || '')
   );
 
-  const canConfirmChairman = role === 'chairman' && !isChairmanLocked;
-  const primaryEnabled = role === 'chairman' ? canConfirmChairman : (canEdit && hasChanges);
-  const primaryLabel = role === 'chairman'
-    ? (hasChanges ? 'Сохранить и подтвердить' : 'Подтвердить проверку')
-    : 'Сохранить';
+  const primaryEnabled = canEdit && hasChanges;
+  const primaryLabel = 'Сохранить';
 
   const save = () => {
     if (!submission) return;
-
-    if (role === 'chairman') {
-      if (!canConfirmChairman) return;
-      if (hasChanges) {
-        onUpdate(submission.id, { status: statusDraft, reviewText: reviewDraft, finalizeChairman: true });
-      } else {
-        onUpdate(submission.id, { finalizeChairman: true });
-      }
-      onClose();
-      return;
-    }
 
     if (!canEdit || !hasChanges) return;
     onUpdate(submission.id, { status: statusDraft, reviewText: reviewDraft });
@@ -177,19 +160,6 @@ export default function SubmissionDetailsModal({
             <div className="p-5 rounded-2xl border border-slate-100 bg-slate-50/70 space-y-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Проверка</p>
               <p className="text-sm text-slate-800 font-semibold">Рецензент: {reviewerName}</p>
-              <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
-                <span className={`px-2 py-1 rounded-lg border ${isReviewerLocked ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-white text-slate-500 border-slate-200'}`}>
-                  {isReviewerLocked ? 'Рецензия зафиксирована' : 'Рецензия не зафиксирована'}
-                </span>
-                <span className={`px-2 py-1 rounded-lg border ${isChairmanLocked ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-white text-slate-500 border-slate-200'}`}>
-                  {isChairmanLocked ? 'Проверка председателя зафиксирована' : 'Проверка председателя не зафиксирована'}
-                </span>
-              </div>
-              {!isChairmanLocked && (
-                <p className="text-xs text-slate-500">
-                  В программу доклад попадёт только после подтверждения председателем.
-                </p>
-              )}
             </div>
           </div>
 
@@ -221,9 +191,7 @@ export default function SubmissionDetailsModal({
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-2">
-            <p className="text-xs text-slate-500">
-              {role === 'chairman' && !isChairmanLocked ? 'После подтверждения председатель больше не сможет менять статус и комментарий для текущей версии.' : ' '}
-            </p>
+            <p className="text-xs text-slate-500"> </p>
             <div className="flex gap-2 justify-end">
               <button onClick={onClose} className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-50">
                 Закрыть

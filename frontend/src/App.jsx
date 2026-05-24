@@ -21,10 +21,10 @@ import AuthView from './components/common/AuthView';
 import InviteRegisterView from './components/common/InviteRegisterView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
 import { clearAccessToken, getAccessToken } from './api/client';
-import { createConference, getMyConferenceRole, listConferenceReviewers, listConferenceStaff, listConferences, listSections } from './api/conferences';
+import { createConference, getConferenceProgram, getMyConferenceRole, listConferenceReviewers, listConferenceStaff, listConferences, listSections } from './api/conferences';
 import { sendEmail } from './api/notifications';
 import { getMe } from './api/users';
-import { listConferenceSubmissions, listChairMySubmissions, makeSubmissionDecision, updateSubmission as apiUpdateSubmission } from './api/submissions';
+import { listConferenceSubmissions, listChairMySubmissions, makeSubmissionDecision, toggleSubmissionProgram, updateSubmission as apiUpdateSubmission } from './api/submissions';
 import { assignReviewer, listMyReviewSubmissions } from './api/reviews';
 
 import AuthorView from './views/AuthorView';
@@ -57,6 +57,7 @@ const normalizeSubmissionStatus = (status) => {
   if (value === 'submitted') return 'reviewing';
   if (value === 'reviewed') return 'reviewing';
   if (value === 'revision_required') return 'needs_revision';
+  if (value === 'revision_submitted') return 'revision_submitted';
   if (value === 'rejected') return 'rejected';
   if (value === 'accepted_oral') return 'accepted_oral';
   if (value === 'accepted_poster') return 'accepted_poster';
@@ -70,6 +71,7 @@ const mapUiDecisionToApi = (uiValue) => {
   if (v === 'rejected') return 'rejected';
   if (v === 'accepted_oral') return 'accepted_oral';
   if (v === 'accepted_poster') return 'accepted_poster';
+  if (v === 'revision_submitted') return null;
   if (v === 'reviewing') return null;
   return v || null;
 };
@@ -97,6 +99,7 @@ export default function App() {
   const [chairVisibleSubmissionIds, setChairVisibleSubmissionIds] = useState([]);
   const [conferenceReviewers, setConferenceReviewers] = useState([]);
   const [staffLoadedForConf, setStaffLoadedForConf] = useState(null);
+  const [programByConference, setProgramByConference] = useState({});
 
   const [activeConfId, setActiveConfId] = useState(null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
@@ -217,6 +220,22 @@ export default function App() {
     return () => {
       isActive = false;
     };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+    async function loadProgram() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await getConferenceProgram(activeConfId);
+        if (!isActive || !Array.isArray(data)) return;
+        setProgramByConference((prev) => ({ ...prev, [activeConfId]: data }));
+      } catch {
+        // ignore
+      }
+    }
+    loadProgram();
+    return () => { isActive = false; };
   }, [isAuthenticated, activeConfId]);
 
   useEffect(() => {
@@ -408,6 +427,7 @@ export default function App() {
           final_comment: s.final_comment ?? null,
           current_file_id: s.current_file_id || null,
           revision_count: s.revision_count ?? 1,
+          is_in_program: Boolean(s.is_in_program),
           is_best: s.is_best ?? false,
           reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
           created_at: s.created_at || nowIso(),
@@ -503,6 +523,7 @@ export default function App() {
       final_comment: s.final_comment ?? null,
       current_file_id: s.current_file_id || null,
       revision_count: s.revision_count ?? 1,
+      is_in_program: Boolean(s.is_in_program),
       is_best: s.is_best ?? false,
       reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
       created_at: s.created_at || nowIso(),
@@ -670,9 +691,11 @@ export default function App() {
           reviewerLocked: s.reviewer_locked_round === s.revision_count,
           chairmanLocked: s.chairman_locked_round === s.revision_count,
           reviewerLockedRound: s.reviewer_locked_round ?? null,
-          chairmanLockedRound: s.chairman_locked_round ?? null
+          chairmanLockedRound: s.chairman_locked_round ?? null,
+          isInProgram: Boolean(s.is_in_program)
         };
-      });
+      })
+      .sort((a, b) => String(a.theme || '').localeCompare(String(b.theme || ''), 'ru', { sensitivity: 'base' }));
   }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, activeConfId]);
 
   const visibleSubmissions = useMemo(() => {
@@ -942,6 +965,18 @@ export default function App() {
         const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
         if (decision) await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
         await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if ((actorRole === 'admin' || actorRole === 'chairman') && updates?.isInProgram !== undefined) {
+      (async () => {
+        await toggleSubmissionProgram(id, Boolean(updates.isInProgram));
+        await refreshSubmissions?.(activeConfId);
+        const program = await getConferenceProgram(activeConfId);
+        if (Array.isArray(program)) {
+          setProgramByConference((prev) => ({ ...prev, [activeConfId]: program }));
+        }
       })().catch(() => {});
       return;
     }
@@ -1279,6 +1314,7 @@ export default function App() {
             {activeTab === 'main' && currentRole === ROLES.REVIEWER && (
               <ReviewerView
                 submissions={curSubmissions}
+                sections={curSections}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.REVIEWER)}
                 currentReviewerId={currentReviewerId}
               />
@@ -1299,7 +1335,7 @@ export default function App() {
             {activeTab === 'info' && currentRole === ROLES.ADMIN && <AdminInfoView conference={activeConf} conferences={conferences} setConferences={setConferences} />}
             {activeTab === 'info' && currentRole !== ROLES.ADMIN && <PublicInfoView conference={activeConf} sections={curSections} users={curUsers} />}
 
-            {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} />}
+            {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} programSections={programByConference[activeConfId] || []} />}
 
             {activeTab === 'users' && currentRole === ROLES.ADMIN && <AdminUsersView activeConfId={activeConfId} users={curUsers} setUsers={setUsers} submissions={curSubmissions} sections={curSections} />}
             {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} reviewers={conferenceReviewers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}

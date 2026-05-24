@@ -77,3 +77,7 @@ export async function updateConference(conferenceId, { title, description, start
     body: { title, description, start_date, submission_deadline, is_public, is_submit }
   });
 }
+
+export async function getConferenceProgram(conferenceId) {
+  return apiRequest(`/conferences/${conferenceId}/program`, { method: 'GET' });
+}

@@ -40,7 +40,7 @@ def create_submission(
     return {
         "id": str(submission.id),
         "conference_id": str(submission.conference_id),
-        "section_id": str(submission.section_id),
+        "section_id": str(submission.section_id) if submission.section_id else None,
         "title": submission.title,
         "status": submission.status,
         "current_file_id": str(submission.current_file_id),
@@ -220,7 +220,7 @@ def make_submission_decision(
         "status": submission.status,
         "final_comment": submission.final_comment,
         "conference_id": str(submission.conference_id),
-        "section_id": str(submission.section_id)
+        "section_id": str(submission.section_id) if submission.section_id else None
     }
 
 @router.patch("/{submission_id}")

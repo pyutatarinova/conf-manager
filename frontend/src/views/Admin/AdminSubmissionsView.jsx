@@ -89,6 +89,8 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
     return map;
   }, [users]);
 
+  const canToggleProgram = (status) => ['accepted_oral', 'accepted_poster', 'needs_revision', 'revision_submitted'].includes(String(status || ''));
+
   return (
     <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-8 animate-in zoom-in-95">
       <div className="space-y-4">
@@ -167,6 +169,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                 <div className="flex flex-wrap items-center gap-3 mb-1">
                   <StatusBadge status={sub.status} />
                   <p className="text-sm font-bold text-slate-800 truncate max-w-[520px]">{sub.theme}</p>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Версия {sub.revisionCount}</span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{getAuthorsString(sub)}</p>
                 <div className="flex flex-wrap gap-2 mt-3">
@@ -210,6 +213,19 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                 >
                   {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                {canToggleProgram(sub.status) && (
+                  <button
+                    type="button"
+                    onClick={() => updateSubmission(sub.id, { isInProgram: !Boolean(sub.isInProgram) })}
+                    className={`text-xs font-bold border shadow-sm rounded-lg px-3 py-2 outline-none ${
+                      sub.isInProgram
+                        ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {sub.isInProgram ? 'Убрать из программы' : 'Добавить в программу'}
+                  </button>
+                )}
                 <button
                   onClick={() => setDetailsId(sub.id)}
                   className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-shadow shadow-md whitespace-nowrap"
