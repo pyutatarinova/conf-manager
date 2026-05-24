@@ -56,6 +56,16 @@ app.include_router(reviews_router, prefix="/reviews", tags=["reviews"])
 def _create_tables_on_startup():
     # Dev-friendly default: if DB is empty, create tables automatically.
     Base.metadata.create_all(bind=engine)
+    # Backward-compatible schema fix for existing DBs without migrations.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE submissions
+                ADD COLUMN IF NOT EXISTS is_in_program BOOLEAN NOT NULL DEFAULT FALSE
+                """
+            )
+        )
 
 
 @app.get("/")

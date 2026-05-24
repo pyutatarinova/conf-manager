@@ -1,18 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Award } from 'lucide-react';
 
-import {
-  INITIAL_CONFERENCES,
-  INITIAL_CONFERENCE_ROLES,
-  INITIAL_FILES,
-  INITIAL_REVIEW_ASSIGNMENTS,
-  INITIAL_REVIEWS,
-  INITIAL_SECTIONS,
-  INITIAL_SUBMISSION_AUTHORS,
-  INITIAL_SUBMISSION_FILES,
-  INITIAL_SUBMISSIONS,
-  INITIAL_USERS
-} from './data/initialData';
 import { ROLES } from './constants';
 
 import Sidebar from './components/layout/Sidebar';
@@ -86,16 +74,16 @@ export default function App() {
   const [conferencesError, setConferencesError] = useState('');
   const [authScreen, setAuthScreen] = useState('auth');
 
-  const [usersTable, setUsersTable] = useState(INITIAL_USERS);
+  const [usersTable, setUsersTable] = useState([]);
   const [conferencesTable, setConferencesTable] = useState([]);
-  const [conferenceRolesTable, setConferenceRolesTable] = useState(INITIAL_CONFERENCE_ROLES);
-  const [sectionsTable, setSectionsTable] = useState(INITIAL_SECTIONS);
-  const [submissionsTable, setSubmissionsTable] = useState(INITIAL_SUBMISSIONS);
-  const [submissionAuthorsTable, setSubmissionAuthorsTable] = useState(INITIAL_SUBMISSION_AUTHORS);
-  const [filesTable, setFilesTable] = useState(INITIAL_FILES);
-  const [submissionFilesTable, setSubmissionFilesTable] = useState(INITIAL_SUBMISSION_FILES);
-  const [reviewsTable, setReviewsTable] = useState(INITIAL_REVIEWS);
-  const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState(INITIAL_REVIEW_ASSIGNMENTS);
+  const [conferenceRolesTable, setConferenceRolesTable] = useState([]);
+  const [sectionsTable, setSectionsTable] = useState([]);
+  const [submissionsTable, setSubmissionsTable] = useState([]);
+  const [submissionAuthorsTable, setSubmissionAuthorsTable] = useState([]);
+  const [filesTable, setFilesTable] = useState([]);
+  const [submissionFilesTable, setSubmissionFilesTable] = useState([]);
+  const [reviewsTable, setReviewsTable] = useState([]);
+  const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState([]);
   const [chairVisibleSubmissionIds, setChairVisibleSubmissionIds] = useState([]);
   const [conferenceReviewers, setConferenceReviewers] = useState([]);
   const [staffLoadedForConf, setStaffLoadedForConf] = useState(null);
@@ -107,9 +95,7 @@ export default function App() {
   const safeSendEmail = (payload) => {
     try {
       void sendEmail(payload).catch(() => {});
-    } catch {
-      // ignore client-side email errors in demo/local mode
-    }
+    } catch {}
   };
 
   useEffect(() => {
@@ -211,7 +197,7 @@ export default function App() {
           return [...withoutConf, ...nextForConf];
         });
       } catch {
-        // ignore sections load errors in demo/local mode
+        setConferencesError('Не удалось загрузить секции конференции.');
       }
     }
 
@@ -231,7 +217,7 @@ export default function App() {
         if (!isActive || !Array.isArray(data)) return;
         setProgramByConference((prev) => ({ ...prev, [activeConfId]: data }));
       } catch {
-        // ignore
+        setConferencesError('Не удалось загрузить программу конференции.');
       }
     }
     loadProgram();
@@ -305,7 +291,7 @@ export default function App() {
 
         setStaffLoadedForConf(activeConfId);
       } catch {
-        // ignore
+        setConferencesError('Не удалось загрузить участников конференции.');
       }
     }
 
@@ -348,6 +334,7 @@ export default function App() {
       } catch {
         if (!isActive) return;
         setConferenceReviewers([]);
+        setConferencesError('Не удалось загрузить список рецензентов.');
       }
     }
 
@@ -368,7 +355,7 @@ export default function App() {
         if (!Array.isArray(data)) return;
         setChairVisibleSubmissionIds(data.map((s) => s.id).filter(Boolean));
       } catch {
-        // ignore (user may not be chair)
+        setConferencesError('Не удалось загрузить заявки председателя.');
       }
     }
 
@@ -397,7 +384,7 @@ export default function App() {
           created_at: s.assigned_at || nowIso()
         })));
       } catch {
-        // ignore (may not be reviewer)
+        setConferencesError('Не удалось загрузить назначения рецензента.');
       }
     }
 
@@ -498,7 +485,7 @@ export default function App() {
           return [...remaining, ...next];
         });
       } catch {
-        // ignore submissions load errors in demo/local mode
+        setConferencesError('Не удалось загрузить заявки конференции.');
       }
     }
 
@@ -1229,22 +1216,7 @@ export default function App() {
                 setIsCreateConfOpen(false);
                 setIsConferenceSelected(true);
               } catch {
-                const newId = uuid();
-                setConferencesTable((prev) => [
-                  ...prev,
-                  {
-                    id: newId,
-                    title,
-                    description: '',
-                    is_public: false,
-                    is_submit: true,
-                    start_date: toIsoDate(startDate) || null,
-                    submission_deadline: toIsoDate(endDate) || nowIso()
-                  }
-                ]);
-                setActiveConfId(newId);
-                setIsCreateConfOpen(false);
-                setIsConferenceSelected(true);
+                setConferencesError('Не удалось создать конференцию.');
               }
             })();
           }}
