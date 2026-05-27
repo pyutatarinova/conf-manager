@@ -6,44 +6,40 @@ services:
     container_name: conf_postgres
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: conference_db
-    ports:
-      - "5001:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   minio:
     image: minio/minio
     container_name: conf_minio
+    restart: always
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
 
   redis:
     image: redis:7
     container_name: conf_redis
-    ports:
-      - "6379:6379"
+    restart: always
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
     container_name: conf_mailhog
+    restart: always
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+      - "8025:8025"
 
   backend:
     build: ./backend
     container_name: conf_backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     depends_on:
       - db
       - minio
@@ -51,17 +47,24 @@ services:
       - mailhog
     environment:
       ROOT_PATH: /api
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
-      SMTP_HOST: mailhog
-      SMTP_PORT: 1025
-      SMTP_FROM: no-reply@conf.local
-      SMTP_USE_SSL: "false"
-      SMTP_USE_STARTTLS: "false"
-      FRONTEND_BASE_URL: ${APP_BASE_URL:-http://localhost}
-      MINIO_INTERNAL_HOST: minio:9000
-      MINIO_PUBLIC_HOST: host.docker.internal:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: password123
+      APP_BASE_URL: ${APP_BASE_URL}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+
+      SECRET_KEY: ${SECRET_KEY}
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_USE_SSL: ${SMTP_USE_SSL}
+      SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS}
+
+      MINIO_INTERNAL_HOST: ${MINIO_INTERNAL_HOST}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - ./backend:/app
 
@@ -72,7 +75,7 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_API_URL: ${VITE_API_URL:-/api}
+      VITE_API_URL: ${VITE_API_URL}
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -92,3 +95,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  
