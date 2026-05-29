@@ -1,9 +1,11 @@
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
-from jose import jwt
+import os
 import hashlib
+from datetime import datetime, timedelta
 
-SECRET_KEY = "SUPER_SECRET_KEY"
+from jose import jwt
+from passlib.context import CryptContext
+
+SECRET_KEY = os.getenv("SECRET_KEY", "DEV_SECRET_KEY")
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
