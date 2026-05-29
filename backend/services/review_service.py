@@ -36,7 +36,7 @@ class ReviewService:
         subject = "Добавлена рецензия по вашей заявке"
         comments = (review.comments or "").strip()
 
-        text = f"Заявка: {submission.title}\nРешение: {decision_text}"
+        text = f"Заявка: {submission.title}\nРешение: {decision_text}\nСистема конференций: http://conf-manager.ru"
         if comments:
             text += f"\n\nКомментарий:\n{comments}"
 
