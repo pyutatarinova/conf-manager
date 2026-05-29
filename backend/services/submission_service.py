@@ -50,7 +50,7 @@ class SubmissionService:
 
         text = f"Заявка: {submission.title}\nНовый статус: {status_text}"
         if comment:
-            text += f"\n\nКомментарий:\n{comment}"
+            text += f"\n\nКомментарий:\n{comment}\nСистема конференций: http://conf-manager.ru"
 
         for to_email in emails:
             email_service.send_text(to_email=to_email, subject=subject, text=text)
