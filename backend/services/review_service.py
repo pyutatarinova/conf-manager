@@ -36,9 +36,9 @@ class ReviewService:
         subject = "Добавлена рецензия по вашей заявке"
         comments = (review.comments or "").strip()
 
-        text = f"Заявка: {submission.title}\nРешение рецензента: {decision_text}"
+        text = f"Заявка: {submission.title}\nРешение: {decision_text}"
         if comments:
-            text += f"\n\nКомментарий рецензента:\n{comments}"
+            text += f"\n\nКомментарий:\n{comments}"
 
         for to_email in emails:
             email_service.send_text(to_email=to_email, subject=subject, text=text)

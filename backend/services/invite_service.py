@@ -134,7 +134,7 @@ class InviteService:
         if existing_user is not None:
             email_service.send_text(
                 to_email=invite.email,
-                subject="Вы назначены в конференции",
+                subject="Назначение в конференцию",
                 text=(
                     f"Вам назначена роль {role_label} в конференции.\n"
                     f"Войдите под своей учетной записью — роль уже активна."
@@ -143,9 +143,9 @@ class InviteService:
         else:
             email_service.send_text(
                 to_email=invite.email,
-                subject="Приглашение в систему конференции",
+                subject="Приглашение в конференцию",
                 text=(
-                    f"Вас пригласили в систему конференции в роли {role_label}.\n\n"
+                    f"Вас пригласили в конференцию в роли {role_label}.\n\n"
                     f"Токен для регистрации:\n{invite.token}\n"
                 ),
             )
