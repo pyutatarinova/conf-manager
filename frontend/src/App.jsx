@@ -1,24 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Award } from 'lucide-react';
 
-import {
-  INITIAL_CONFERENCES,
-  INITIAL_CONFERENCE_ROLES,
-  INITIAL_FILES,
-  INITIAL_REVIEW_ASSIGNMENTS,
-  INITIAL_REVIEWS,
-  INITIAL_SECTIONS,
-  INITIAL_SUBMISSION_AUTHORS,
-  INITIAL_SUBMISSION_FILES,
-  INITIAL_SUBMISSIONS,
-  INITIAL_USERS
-} from './data/initialData';
 import { ROLES } from './constants';
 
 import Sidebar from './components/layout/Sidebar';
 
 import AuthView from './components/common/AuthView';
+import InviteRegisterView from './components/common/InviteRegisterView';
 import CreateConferenceModal from './components/ui/CreateConferenceModal';
+import { clearAccessToken, getAccessToken } from './api/client';
+import { createConference, getConferenceProgram, getMyConferenceRole, listConferenceReviewers, listConferenceStaff, listConferences, listSections } from './api/conferences';
+import { sendEmail } from './api/notifications';
+import { getMe } from './api/users';
+import { listConferenceSubmissions, listChairMySubmissions, makeSubmissionDecision, toggleSubmissionProgram, updateSubmission as apiUpdateSubmission } from './api/submissions';
+import { assignReviewer, listMyReviewSubmissions } from './api/reviews';
 
 import AuthorView from './views/AuthorView';
 import ReviewerView from './views/ReviewerView';
@@ -44,34 +39,557 @@ const buildMimeType = (name) => {
   return 'application/octet-stream';
 };
 
+const normalizeSubmissionStatus = (status) => {
+  const value = String(status || '').trim();
+  if (!value) return 'reviewing';
+  if (value === 'submitted') return 'reviewing';
+  if (value === 'reviewed') return 'reviewing';
+  if (value === 'revision_required') return 'needs_revision';
+  if (value === 'revision_submitted') return 'revision_submitted';
+  if (value === 'rejected') return 'rejected';
+  if (value === 'accepted_oral') return 'accepted_oral';
+  if (value === 'accepted_poster') return 'accepted_poster';
+  if (value === 'accepted') return 'accepted_oral';
+  return value;
+};
+
+const mapUiDecisionToApi = (uiValue) => {
+  const v = String(uiValue || '').trim();
+  if (v === 'needs_revision') return 'revision_required';
+  if (v === 'rejected') return 'rejected';
+  if (v === 'accepted_oral') return 'accepted_oral';
+  if (v === 'accepted_poster') return 'accepted_poster';
+  if (v === 'revision_submitted') return null;
+  if (v === 'reviewing') return null;
+  return v || null;
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [isConferenceSelected, setIsConferenceSelected] = useState(false);
   const [currentRole, setCurrentRole] = useState(ROLES.AUTHOR);
   const [activeTab, setActiveTab] = useState('main');
+  const [conferencesLoading, setConferencesLoading] = useState(false);
+  const [conferencesError, setConferencesError] = useState('');
+  const [authScreen, setAuthScreen] = useState('auth');
 
-  const [usersTable, setUsersTable] = useState(INITIAL_USERS);
-  const [conferencesTable, setConferencesTable] = useState(INITIAL_CONFERENCES);
-  const [conferenceRolesTable, setConferenceRolesTable] = useState(INITIAL_CONFERENCE_ROLES);
-  const [sectionsTable, setSectionsTable] = useState(INITIAL_SECTIONS);
-  const [submissionsTable, setSubmissionsTable] = useState(INITIAL_SUBMISSIONS);
-  const [submissionAuthorsTable, setSubmissionAuthorsTable] = useState(INITIAL_SUBMISSION_AUTHORS);
-  const [filesTable, setFilesTable] = useState(INITIAL_FILES);
-  const [submissionFilesTable, setSubmissionFilesTable] = useState(INITIAL_SUBMISSION_FILES);
-  const [reviewsTable, setReviewsTable] = useState(INITIAL_REVIEWS);
-  const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState(INITIAL_REVIEW_ASSIGNMENTS);
+  const [usersTable, setUsersTable] = useState([]);
+  const [conferencesTable, setConferencesTable] = useState([]);
+  const [conferenceRolesTable, setConferenceRolesTable] = useState([]);
+  const [sectionsTable, setSectionsTable] = useState([]);
+  const [submissionsTable, setSubmissionsTable] = useState([]);
+  const [submissionAuthorsTable, setSubmissionAuthorsTable] = useState([]);
+  const [filesTable, setFilesTable] = useState([]);
+  const [submissionFilesTable, setSubmissionFilesTable] = useState([]);
+  const [reviewsTable, setReviewsTable] = useState([]);
+  const [reviewAssignmentsTable, setReviewAssignmentsTable] = useState([]);
+  const [chairVisibleSubmissionIds, setChairVisibleSubmissionIds] = useState([]);
+  const [conferenceReviewers, setConferenceReviewers] = useState([]);
+  const [staffLoadedForConf, setStaffLoadedForConf] = useState(null);
+  const [programByConference, setProgramByConference] = useState({});
 
-  const [activeConfId, setActiveConfId] = useState(INITIAL_CONFERENCES[0]?.id || null);
+  const [activeConfId, setActiveConfId] = useState(null);
   const [isCreateConfOpen, setIsCreateConfOpen] = useState(false);
+
+  const safeSendEmail = (payload) => {
+    try {
+      void sendEmail(payload).catch(() => {});
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (getAccessToken()) setIsAuthenticated(true);
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMe() {
+      if (!isAuthenticated) {
+        setCurrentUser(null);
+        return;
+      }
+      try {
+        const me = await getMe();
+        if (!isActive) return;
+        setCurrentUser(me || null);
+        if (me?.id) {
+          setUsersTable((prev) => {
+            const nextUser = {
+              id: me.id,
+              name: me.name || '',
+              email: me.email || '',
+              password_hash: '',
+              affiliation: me.affiliation || '',
+              bio: me.bio || '',
+              created_at: me.created_at || nowIso()
+            };
+            const existingIdx = prev.findIndex((u) => u.id === me.id);
+            if (existingIdx === -1) return [...prev, nextUser];
+            const copy = [...prev];
+            copy[existingIdx] = { ...copy[existingIdx], ...nextUser };
+            return copy;
+          });
+        }
+      } catch {
+        if (!isActive) return;
+        setCurrentUser(null);
+      }
+    }
+
+    loadMe();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadConferences() {
+      if (!isAuthenticated) return;
+      setConferencesLoading(true);
+      setConferencesError('');
+      try {
+        const data = await listConferences();
+        if (!isActive) return;
+        if (Array.isArray(data)) {
+          setConferencesTable(data);
+          if (!activeConfId && data[0]?.id) setActiveConfId(data[0].id);
+        }
+      } catch (e) {
+        if (!isActive) return;
+        setConferencesError(e?.message || 'Не удалось загрузить список конференций.');
+      } finally {
+        if (isActive) setConferencesLoading(false);
+      }
+    }
+
+    loadConferences();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSections() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await listSections(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        setSectionsTable((prev) => {
+          const withoutConf = prev.filter((s) => s.conference_id !== activeConfId);
+          const nextForConf = data.map((s) => ({
+            id: s.id,
+            conference_id: s.conference_id,
+            chair_id: s.chair_id || null,
+            chair_name: s.chair_name || null,
+            chair_email: s.chair_email || null,
+            name: s.name,
+            description: s.description
+          }));
+          return [...withoutConf, ...nextForConf];
+        });
+      } catch {
+        setConferencesError('Не удалось загрузить секции конференции.');
+      }
+    }
+
+    loadSections();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+    async function loadProgram() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await getConferenceProgram(activeConfId);
+        if (!isActive || !Array.isArray(data)) return;
+        setProgramByConference((prev) => ({ ...prev, [activeConfId]: data }));
+      } catch {
+        setConferencesError('Не удалось загрузить программу конференции.');
+      }
+    }
+    loadProgram();
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadRole() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await getMyConferenceRole(activeConfId);
+        if (!isActive) return;
+        const role = String(data?.role || '').trim();
+        if (role === 'admin') setCurrentRole(ROLES.ADMIN);
+        else if (role === 'chair') setCurrentRole(ROLES.CHAIRMAN);
+        else if (role === 'reviewer') setCurrentRole(ROLES.REVIEWER);
+        else setCurrentRole(ROLES.AUTHOR);
+      } catch {
+        if (!isActive) return;
+        setCurrentRole(ROLES.AUTHOR);
+      }
+    }
+
+    loadRole();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadStaff() {
+      if (!isAuthenticated || !activeConfId) return;
+      if (currentRole !== ROLES.ADMIN) return;
+      if (staffLoadedForConf === activeConfId) return;
+
+      try {
+        const data = await listConferenceStaff(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+
+        setUsersTable((prev) => {
+          const other = prev.filter((u) => !data.some((r) => r.user_id === u.id));
+          const next = data
+            .filter((r) => r.user_id)
+            .map((r) => ({
+              id: r.user_id,
+              name: r.user_name || '',
+              email: r.email || '',
+              password_hash: '',
+              affiliation: r.affiliation || '',
+              bio: '',
+              created_at: nowIso()
+            }));
+          return [...other, ...next];
+        });
+
+        setConferenceRolesTable((prev) => {
+          const other = prev.filter((r) => r.conference_id !== activeConfId);
+          const next = data.map((r) => ({
+            id: r.role_id,
+            user_id: r.user_id,
+            conference_id: r.conference_id,
+            role: r.role === 'chair' ? 'chairman' : r.role,
+            section_id: r.section_id || null
+          }));
+          return [...other, ...next];
+        });
+
+        setStaffLoadedForConf(activeConfId);
+      } catch {
+        setConferencesError('Не удалось загрузить участников конференции.');
+      }
+    }
+
+    loadStaff();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId, currentRole, staffLoadedForConf]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadReviewers() {
+      if (!isAuthenticated || !activeConfId) return;
+      if (currentRole !== ROLES.ADMIN && currentRole !== ROLES.CHAIRMAN) return;
+      try {
+        const data = await listConferenceReviewers(activeConfId);
+        if (!isActive) return;
+        const reviewers = Array.isArray(data) ? data : [];
+        setConferenceReviewers(reviewers);
+        setUsersTable((prev) => {
+          const next = [...prev];
+          reviewers.forEach((r) => {
+            const id = r.id || r.user_id;
+            if (!id) return;
+            const idx = next.findIndex((u) => u.id === id);
+            const userRow = {
+              id,
+              name: r.name || '',
+              email: r.email || '',
+              password_hash: '',
+              affiliation: r.affiliation || '',
+              bio: '',
+              created_at: nowIso()
+            };
+            if (idx === -1) next.push(userRow);
+            else next[idx] = { ...next[idx], ...userRow };
+          });
+          return next;
+        });
+      } catch {
+        if (!isActive) return;
+        setConferenceReviewers([]);
+        setConferencesError('Не удалось загрузить список рецензентов.');
+      }
+    }
+
+    loadReviewers();
+
+    return () => { isActive = false; };
+  }, [isAuthenticated, activeConfId, currentRole]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadChairScope() {
+      if (!isAuthenticated || !activeConfId || currentRole !== ROLES.CHAIRMAN) return;
+      setChairVisibleSubmissionIds([]);
+      try {
+        const data = await listChairMySubmissions();
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        setChairVisibleSubmissionIds(data.map((s) => s.id).filter(Boolean));
+      } catch {
+        setConferencesError('Не удалось загрузить заявки председателя.');
+      }
+    }
+
+    loadChairScope();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId, currentRole]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadMyAssignments() {
+      if (!isAuthenticated || !activeConfId || !currentUser?.id) return;
+      try {
+        const data = await listMyReviewSubmissions();
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+        // /reviews/my-submissions теперь возвращает полную инфу по заявкам + assignment_id/assigned_at
+        setReviewAssignmentsTable(() => data.map((s) => ({
+          id: s.assignment_id || uuid(),
+          submission_id: s.id,
+          reviewer_id: currentUser.id,
+          assigned_by: null,
+          created_at: s.assigned_at || nowIso()
+        })));
+      } catch {
+        setConferencesError('Не удалось загрузить назначения рецензента.');
+      }
+    }
+
+    loadMyAssignments();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId, currentUser?.id]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadSubmissions() {
+      if (!isAuthenticated || !activeConfId) return;
+      try {
+        const data = await listConferenceSubmissions(activeConfId);
+        if (!isActive) return;
+        if (!Array.isArray(data)) return;
+
+        const normalizedSubmissions = data.map((s) => ({
+          id: s.id,
+          conference_id: activeConfId,
+          section_id: s.section_id || null,
+          title: s.title,
+          status: normalizeSubmissionStatus(s.status),
+          final_comment: s.final_comment ?? null,
+          current_file_id: s.current_file_id || null,
+          revision_count: s.revision_count ?? 1,
+          is_in_program: Boolean(s.is_in_program),
+          is_best: s.is_best ?? false,
+          reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
+          created_at: s.created_at || nowIso(),
+          updated_at: s.updated_at || nowIso()
+        }));
+
+        setSubmissionsTable((prev) => {
+          const withoutConf = prev.filter((s) => s.conference_id !== activeConfId);
+          return [...withoutConf, ...normalizedSubmissions];
+        });
+
+        setSubmissionAuthorsTable((prev) => {
+          const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
+          const next = [];
+          data.forEach((s) => {
+            (s.authors || []).forEach((a) => {
+              next.push({
+                id: a.id || uuid(),
+                submission_id: s.id,
+                user_id: a.user_id || null,
+                name: a.name,
+                email: a.email,
+                affiliation: a.affiliation || '',
+                author_order: a.author_order ?? 1,
+                is_corresponding: Boolean(a.is_corresponding)
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
+
+        setReviewsTable((prev) => {
+          const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
+          const next = [];
+          data.forEach((s) => {
+            (s.reviews || []).forEach((r) => {
+              next.push({
+                id: r.id || uuid(),
+                submission_id: s.id,
+                reviewer_id: r.reviewer_id || null,
+                decision: normalizeSubmissionStatus(r.decision),
+                comments: r.comments || '',
+                file_id: r.file_id || null,
+                revision_round: r.revision_round ?? 1,
+                created_at: r.created_at || nowIso(),
+                updated_at: r.updated_at || r.created_at || nowIso()
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
+
+        setSubmissionFilesTable((prev) => {
+          const remaining = prev.filter((f) => !normalizedSubmissions.some((s) => s.id === f.submission_id));
+          const next = [];
+          data.forEach((s) => {
+            (s.files || []).forEach((f) => {
+              next.push({
+                id: f.id || uuid(),
+                submission_id: s.id,
+                file_id: f.file_id,
+                version: f.version ?? 1,
+                file_type: f.file_type,
+                uploaded_at: f.uploaded_at || nowIso()
+              });
+            });
+          });
+          return [...remaining, ...next];
+        });
+      } catch {
+        setConferencesError('Не удалось загрузить заявки конференции.');
+      }
+    }
+
+    loadSubmissions();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthenticated, activeConfId]);
+
+  const refreshSubmissions = async (conferenceId) => {
+    if (!conferenceId) return;
+    const data = await listConferenceSubmissions(conferenceId);
+    if (!Array.isArray(data)) return;
+
+    const normalizedSubmissions = data.map((s) => ({
+      id: s.id,
+      conference_id: conferenceId,
+      section_id: s.section_id || null,
+      title: s.title,
+      status: normalizeSubmissionStatus(s.status),
+      final_comment: s.final_comment ?? null,
+      current_file_id: s.current_file_id || null,
+      revision_count: s.revision_count ?? 1,
+      is_in_program: Boolean(s.is_in_program),
+      is_best: s.is_best ?? false,
+      reviewer_id: Array.isArray(s.assigned_reviewers) && s.assigned_reviewers[0]?.reviewer_id ? s.assigned_reviewers[0].reviewer_id : null,
+      created_at: s.created_at || nowIso(),
+      updated_at: s.updated_at || nowIso()
+    }));
+
+    setSubmissionsTable((prev) => {
+      const withoutConf = prev.filter((s) => s.conference_id !== conferenceId);
+      return [...withoutConf, ...normalizedSubmissions];
+    });
+
+    setSubmissionAuthorsTable((prev) => {
+      const remaining = prev.filter((a) => !normalizedSubmissions.some((s) => s.id === a.submission_id));
+      const next = [];
+      data.forEach((s) => {
+        (s.authors || []).forEach((a) => {
+          next.push({
+            id: a.id || uuid(),
+            submission_id: s.id,
+            user_id: a.user_id || null,
+            name: a.name,
+            email: a.email,
+            affiliation: a.affiliation || '',
+            author_order: a.author_order ?? 1,
+            is_corresponding: Boolean(a.is_corresponding)
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
+
+    setReviewsTable((prev) => {
+      const remaining = prev.filter((r) => !normalizedSubmissions.some((s) => s.id === r.submission_id));
+      const next = [];
+      data.forEach((s) => {
+        (s.reviews || []).forEach((r) => {
+          next.push({
+            id: r.id || uuid(),
+            submission_id: s.id,
+            reviewer_id: r.reviewer_id || null,
+            decision: normalizeSubmissionStatus(r.decision),
+            comments: r.comments || '',
+            file_id: r.file_id || null,
+            revision_round: r.revision_round ?? 1,
+            created_at: r.created_at || nowIso(),
+            updated_at: r.updated_at || r.created_at || nowIso()
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
+
+    setSubmissionFilesTable((prev) => {
+      const remaining = prev.filter((f) => !normalizedSubmissions.some((s) => s.id === f.submission_id));
+      const next = [];
+      data.forEach((s) => {
+        (s.files || []).forEach((f) => {
+          next.push({
+            id: f.id || uuid(),
+            submission_id: s.id,
+            file_id: f.file_id,
+            version: f.version ?? 1,
+            file_type: f.file_type,
+            uploaded_at: f.uploaded_at || nowIso()
+          });
+        });
+      });
+      return [...remaining, ...next];
+    });
+  };
 
   const conferences = useMemo(
     () => conferencesTable.map((c) => ({
       id: c.id,
       title: c.title,
       description: c.description,
-      startDate: toDateInput(c.created_at),
+      startDate: toDateInput(c.start_date),
       endDate: toDateInput(c.submission_deadline),
-      isPublic: c.is_public ?? true,
+      isPublic: c.is_public ?? false,
       isSubmit: c.is_submit ?? true
     })),
     [conferencesTable]
@@ -87,7 +605,15 @@ export default function App() {
   const curSections = useMemo(
     () => sectionsTable
       .filter((s) => s.conference_id === activeConfId)
-      .map((s) => ({ id: s.id, conferenceId: s.conference_id, name: s.name, description: s.description })),
+      .map((s) => ({
+        id: s.id,
+        conferenceId: s.conference_id,
+        chairId: s.chair_id || null,
+        chairName: s.chair_name || null,
+        chairEmail: s.chair_email || null,
+        name: s.name,
+        description: s.description
+      })),
     [sectionsTable, activeConfId]
   );
 
@@ -133,8 +659,6 @@ export default function App() {
           .filter((r) => r.submission_id === s.id && r.revision_round === s.revision_count)
           .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))[0];
 
-        const assignment = reviewAssignmentsTable.find((a) => a.submission_id === s.id);
-
         return {
           id: s.id,
           conferenceId: s.conference_id,
@@ -148,19 +672,43 @@ export default function App() {
           thesisFileName: thesisFile?.original_name || 'thesis.pdf',
           status: s.status,
           revisionCount: s.revision_count,
-          reviewText: latestReview?.comments || '',
-          reviewerId: assignment?.reviewer_id || null,
+          reviewText: s.final_comment || latestReview?.comments || '',
+          reviewerId: s.reviewer_id || null,
           isBest: Boolean(s.is_best),
           reviewerLocked: s.reviewer_locked_round === s.revision_count,
           chairmanLocked: s.chairman_locked_round === s.revision_count,
           reviewerLockedRound: s.reviewer_locked_round ?? null,
-          chairmanLockedRound: s.chairman_locked_round ?? null
+          chairmanLockedRound: s.chairman_locked_round ?? null,
+          isInProgram: Boolean(s.is_in_program)
         };
-      });
-  }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, reviewAssignmentsTable, activeConfId]);
+      })
+      .sort((a, b) => String(a.theme || '').localeCompare(String(b.theme || ''), 'ru', { sensitivity: 'base' }));
+  }, [submissionsTable, submissionAuthorsTable, filesTable, submissionFilesTable, reviewsTable, activeConfId]);
 
-  const currentReviewerId = curUsers.find((u) => u.role === 'reviewer')?.id || null;
-  const currentChairmanId = curUsers.find((u) => u.role === 'chairman')?.id || null;
+  const visibleSubmissions = useMemo(() => {
+    if (currentRole !== ROLES.AUTHOR) return curSubmissions;
+
+    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
+    if (!myEmail) return [];
+
+    const allowedIds = new Set(
+      submissionAuthorsTable
+        .filter((a) => String(a.email || '').trim().toLowerCase() === myEmail)
+        .map((a) => a.submission_id)
+    );
+
+    return curSubmissions.filter((s) => allowedIds.has(s.id));
+  }, [curSubmissions, currentRole, currentUser, submissionAuthorsTable]);
+
+  const chairmanScopedSubmissions = useMemo(() => {
+    if (currentRole !== ROLES.CHAIRMAN) return curSubmissions;
+    if (!Array.isArray(chairVisibleSubmissionIds) || chairVisibleSubmissionIds.length === 0) return [];
+    const allowed = new Set(chairVisibleSubmissionIds);
+    return curSubmissions.filter((s) => allowed.has(s.id));
+  }, [curSubmissions, currentRole, chairVisibleSubmissionIds]);
+
+  const currentReviewerId = currentRole === ROLES.REVIEWER ? (currentUser?.id || null) : null;
+  const currentChairmanId = currentRole === ROLES.CHAIRMAN ? (currentUser?.id || null) : null;
 
   const setConferences = (nextConferences) => {
     setConferencesTable((prev) => prev.map((conf) => {
@@ -170,30 +718,31 @@ export default function App() {
           ...conf,
           title: next.title,
           description: next.description,
-          created_at: toIsoDate(next.startDate) || conf.created_at,
+          start_date: toIsoDate(next.startDate) || conf.start_date,
           submission_deadline: toIsoDate(next.endDate) || conf.submission_deadline,
-          is_public: next.isPublic ?? conf.is_public ?? true,
+          is_public: next.isPublic ?? conf.is_public ?? false,
           is_submit: next.isSubmit ?? conf.is_submit ?? true
         };
       }));
     };
 
-  const setSections = (nextSectionsLegacy) => {
-    setSectionsTable((prev) => {
-      let next = prev.filter((s) => s.conference_id !== activeConfId);
-      const updatedForConf = nextSectionsLegacy.map((s) => {
-        const existing = prev.find((p) => p.id === s.id);
-        return {
-          id: s.id || uuid(),
-          conference_id: activeConfId,
-          name: s.name,
-          description: s.description,
-          ...(existing ? {} : {})
-        };
-      });
-      return [...next, ...updatedForConf];
-    });
-  };
+	  const setSections = (nextSectionsLegacy) => {
+	    setSectionsTable((prev) => {
+	      let next = prev.filter((s) => s.conference_id !== activeConfId);
+	      const updatedForConf = nextSectionsLegacy.map((s) => {
+	        const existing = prev.find((p) => p.id === s.id);
+	        return {
+	          id: s.id || uuid(),
+	          conference_id: activeConfId,
+	          chair_id: s.chairId ?? existing?.chair_id ?? null,
+	          name: s.name,
+	          description: s.description,
+	          ...(existing ? {} : {})
+	        };
+	      });
+	      return [...next, ...updatedForConf];
+	    });
+	  };
 
   const setUsers = (nextUsersLegacy) => {
     const existingById = new Map(usersTable.map((u) => [u.id, u]));
@@ -360,6 +909,65 @@ export default function App() {
     const currentSubmission = submissionsTable.find((s) => s.id === id);
     if (!currentSubmission) return;
 
+    // Реальные вызовы API (reviews/submissions). Оставшаяся часть функции — legacy мок-логика.
+    if ((actorRole === 'chairman' || actorRole === 'admin') && updates?.finalizeChairman === true) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (!decision) return;
+        await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'reviewer' && updates?.finalizeReview === true) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (!decision) return;
+        await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if ((actorRole === 'chairman' || actorRole === 'admin') && updates?.reviewerId !== undefined) {
+      (async () => {
+        if (!updates.reviewerId) return;
+        await assignReviewer({ submission_id: id, reviewer_id: updates.reviewerId });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'admin' && updates?.sectionId !== undefined) {
+      (async () => {
+        await apiUpdateSubmission(id, { section_id: updates.sectionId || null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if (actorRole === 'admin' && (updates?.status !== undefined || updates?.reviewText !== undefined)) {
+      (async () => {
+        const decision = mapUiDecisionToApi(updates.status || currentSubmission.status);
+        if (decision) await makeSubmissionDecision(id, { decision, comment: updates.reviewText ?? null });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+    }
+
+    if ((actorRole === 'admin' || actorRole === 'chairman') && updates?.isInProgram !== undefined) {
+      (async () => {
+        await toggleSubmissionProgram(id, Boolean(updates.isInProgram));
+        await refreshSubmissions?.(activeConfId);
+        const program = await getConferenceProgram(activeConfId);
+        if (Array.isArray(program)) {
+          setProgramByConference((prev) => ({ ...prev, [activeConfId]: program }));
+        }
+      })().catch(() => {});
+      return;
+    }
+
     const isReviewerLockedForRound = currentSubmission.reviewer_locked_round === currentSubmission.revision_count;
     const isChairmanLockedForRound = currentSubmission.chairman_locked_round === currentSubmission.revision_count;
 
@@ -375,7 +983,19 @@ export default function App() {
         || (actorRole === 'reviewer' && !isReviewerLockedForRound && !isChairmanLockedForRound)
         || (actorRole === 'chairman' && !isChairmanLockedForRound);
 
-      if (canEditStatus) nextSubmission.status = updates.status;
+      if (canEditStatus) {
+        nextSubmission.status = updates.status;
+
+        const authors = submissionAuthorsTable.filter((a) => a.submission_id === id);
+        const uniqueEmails = [...new Set(authors.map((a) => a.email).filter(Boolean))];
+        uniqueEmails.forEach((email) => {
+          safeSendEmail({
+            to: email,
+            subject: 'Изменение статуса работы',
+            text: `Статус вашей работы "${currentSubmission.title}" изменен на: ${updates.status}`
+          });
+        });
+      }
     }
 
     if (updates.revisionCount !== undefined) {
@@ -436,6 +1056,24 @@ export default function App() {
     if (updates.reviewerId !== undefined) {
       if (actorRole !== 'chairman' && actorRole !== 'admin') return;
       if (actorRole === 'chairman' && isChairmanLockedForRound) return;
+
+      (async () => {
+        if (!updates.reviewerId) return;
+        await assignReviewer({ submission_id: id, reviewer_id: updates.reviewerId });
+        await refreshSubmissions?.(activeConfId);
+      })().catch(() => {});
+      return;
+
+      if (updates.reviewerId) {
+        const reviewer = usersTable.find((u) => u.id === updates.reviewerId);
+        if (reviewer?.email) {
+          safeSendEmail({
+            to: reviewer.email,
+            subject: 'Назначена работа на рецензирование',
+            text: `Вам назначена работа "${currentSubmission.title}" для рецензирования.`
+          });
+        }
+      }
       setReviewAssignmentsTable((prev) => {
         const without = prev.filter((a) => a.submission_id !== id);
         if (!updates.reviewerId) return without;
@@ -499,7 +1137,28 @@ export default function App() {
   }, [currentRole]);
 
   if (!isAuthenticated) {
-    return <AuthView onAuth={() => { setIsAuthenticated(true); setIsConferenceSelected(false); }} />;
+    if (authScreen === 'invite') {
+      return (
+        <InviteRegisterView
+          onAuth={(token) => {
+            if (token) setIsAuthenticated(true);
+            setIsConferenceSelected(false);
+            setAuthScreen('auth');
+          }}
+          onBack={() => setAuthScreen('auth')}
+        />
+      );
+    }
+
+    return (
+      <AuthView
+        onAuth={() => {
+          setIsAuthenticated(true);
+          setIsConferenceSelected(false);
+        }}
+        onInviteRegister={() => setAuthScreen('invite')}
+      />
+    );
   }
 
   if (!isConferenceSelected) {
@@ -513,28 +1172,53 @@ export default function App() {
             setActiveConfId(conferenceId);
             setIsConferenceSelected(true);
           }}
+          onLogout={() => {
+            clearAccessToken();
+            setIsAuthenticated(false);
+            setIsConferenceSelected(false);
+            setIsCreateConfOpen(false);
+          }}
+          loading={conferencesLoading}
+          error={conferencesError}
         />
 
         <CreateConferenceModal
           isOpen={isCreateConfOpen}
           onClose={() => setIsCreateConfOpen(false)}
           onCreate={({ title, startDate, endDate }) => {
-            const newId = uuid();
-            setConferencesTable((prev) => [
-              ...prev,
-                {
-                  id: newId,
+            (async () => {
+              try {
+                const created = await createConference({
                   title,
                   description: '',
+                  start_date: toIsoDate(startDate) || null,
+                  submission_deadline: toIsoDate(endDate) || null,
                   is_public: false,
-                  is_submit: true,
-                  created_at: toIsoDate(startDate) || nowIso(),
-                  submission_deadline: toIsoDate(endDate) || nowIso()
-                }
-              ]);
-            setActiveConfId(newId);
-            setIsCreateConfOpen(false);
-            setIsConferenceSelected(true);
+                  is_submit: true
+                });
+
+                const newId = created?.id || uuid();
+
+                setConferencesTable((prev) => [
+                  ...prev,
+                  {
+                    id: newId,
+                    title: created?.title ?? title,
+                    description: created?.description ?? '',
+                    is_public: created?.is_public ?? false,
+                    is_submit: created?.is_submit ?? true,
+                    start_date: created?.start_date ?? (toIsoDate(startDate) || null),
+                    submission_deadline: created?.submission_deadline ?? (toIsoDate(endDate) || nowIso())
+                  }
+                ]);
+
+                setActiveConfId(newId);
+                setIsCreateConfOpen(false);
+                setIsConferenceSelected(true);
+              } catch {
+                setConferencesError('Не удалось создать конференцию.');
+              }
+            })();
           }}
         />
       </>
@@ -553,11 +1237,16 @@ export default function App() {
           </p>
         </div>
 
-        <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-xl border border-slate-200 ml-4 flex-shrink-0">
+	        <div className="hidden">
+	          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Роль</span>
+	          <span className="text-sm font-black text-indigo-600">
+	            {currentRole === ROLES.ADMIN ? 'Администратор' : currentRole === ROLES.CHAIRMAN ? 'Председатель' : currentRole === ROLES.REVIEWER ? 'Рецензент' : 'Автор'}
+	          </span>
           <select
-            className="bg-transparent border-none text-sm font-bold rounded-lg px-3 py-1.5 focus:ring-0 outline-none cursor-pointer text-indigo-600"
+            className="hidden"
             value={currentRole}
-            onChange={(e) => setCurrentRole(e.target.value)}
+	            onChange={() => {}}
+	            disabled
           >
             <option value={ROLES.AUTHOR}>Автор</option>
             <option value={ROLES.REVIEWER}>Рецензент</option>
@@ -574,6 +1263,7 @@ export default function App() {
           setActiveTab={setActiveTab}
           onBackToConferenceSelect={() => setIsConferenceSelected(false)}
           onLogout={() => {
+            clearAccessToken();
             setIsAuthenticated(false);
             setIsConferenceSelected(false);
             setIsCreateConfOpen(false);
@@ -584,38 +1274,43 @@ export default function App() {
             {activeTab === 'main' && currentRole === ROLES.AUTHOR && (
               <AuthorView
                 activeConfId={activeConfId}
+                currentUser={currentUser}
+                sendEmail={safeSendEmail}
                 isSubmitOpen={activeConf?.isSubmit ?? true}
                 sections={curSections}
-                submissions={curSubmissions}
+                submissions={visibleSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.AUTHOR)}
-                setSubmissions={setSubmissions}
+                refreshSubmissions={refreshSubmissions}
               />
             )}
             {activeTab === 'main' && currentRole === ROLES.REVIEWER && (
               <ReviewerView
                 submissions={curSubmissions}
+                sections={curSections}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.REVIEWER)}
                 currentReviewerId={currentReviewerId}
               />
             )}
             {activeTab === 'main' && currentRole === ROLES.CHAIRMAN && (
               <ChairmanView
-                submissions={curSubmissions}
+                activeConfId={activeConfId}
+                submissions={chairmanScopedSubmissions}
                 updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.CHAIRMAN)}
                 sections={curSections}
                 setSections={setSections}
                 users={curUsers}
                 chairmanId={currentChairmanId}
+                reviewers={conferenceReviewers}
               />
             )}
 
             {activeTab === 'info' && currentRole === ROLES.ADMIN && <AdminInfoView conference={activeConf} conferences={conferences} setConferences={setConferences} />}
             {activeTab === 'info' && currentRole !== ROLES.ADMIN && <PublicInfoView conference={activeConf} sections={curSections} users={curUsers} />}
 
-            {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} />}
+            {activeTab === 'program' && <SharedProgramView sections={curSections} submissions={curSubmissions} programSections={programByConference[activeConfId] || []} />}
 
             {activeTab === 'users' && currentRole === ROLES.ADMIN && <AdminUsersView activeConfId={activeConfId} users={curUsers} setUsers={setUsers} submissions={curSubmissions} sections={curSections} />}
-            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}
+            {activeTab === 'submissions' && currentRole === ROLES.ADMIN && <AdminSubmissionsView activeConfId={activeConfId} sections={curSections} setSections={setSections} submissions={curSubmissions} users={curUsers} reviewers={conferenceReviewers} updateSubmission={(id, updates) => updateSubmission(id, updates, ROLES.ADMIN)} />}
           </div>
         </main>
       </div>

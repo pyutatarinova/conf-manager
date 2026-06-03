@@ -1,25 +1,57 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { FileDown, Plus, Trash2, List, FileText, Pencil } from 'lucide-react';
 
 import { getAuthorsString } from '../../utils/helpers';
 import StatusBadge from '../../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../../components/ui/SubmissionDetailsModal';
+import { createSection, deleteSection, updateSection } from '../../api/conferences';
+import { downloadSubmissionFileDirect } from '../../api/submissions';
+import { triggerBrowserDownload } from '../../utils/download';
 
-export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, updateSubmission }) {
+export default function AdminSubmissionsView({ activeConfId, sections, setSections, submissions, users, reviewers = [], updateSubmission }) {
   const [newSecName, setNewSecName] = useState('');
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [sectionDescDraft, setSectionDescDraft] = useState('');
   const [detailsId, setDetailsId] = useState(null);
+  const [sectionError, setSectionError] = useState('');
+  const [downloadBusy, setDownloadBusy] = useState({});
 
   const detailsSubmission = useMemo(
     () => (submissions || []).find((s) => s.id === detailsId) || null,
     [submissions, detailsId]
   );
 
-  const addSection = () => {
-    if (!newSecName.trim()) return;
-    setSections([...sections, { id: Date.now(), conferenceId: activeConfId, name: newSecName.trim(), description: '' }]);
-    setNewSecName('');
+  const download = async (submissionId, fileType) => {
+    if (!submissionId) return;
+    const key = `${submissionId}:${fileType}`;
+    setDownloadBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submissionId, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const addSection = async () => {
+    const name = newSecName.trim();
+    if (!name || !activeConfId) return;
+    setSectionError('');
+    try {
+      const created = await createSection(activeConfId, { name, description: '' });
+      setSections([
+        ...sections,
+        {
+          id: created?.id || Date.now(),
+          conferenceId: created?.conference_id || activeConfId,
+          name: created?.name || name,
+          description: created?.description || ''
+        }
+      ]);
+      setNewSecName('');
+    } catch (e) {
+      setSectionError(e?.message || 'Не удалось создать секцию.');
+    }
   };
 
   const startEditSection = (section) => {
@@ -29,9 +61,24 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
 
   const saveSectionDesc = () => {
     if (!editingSectionId) return;
+    const target = sections.find((s) => s.id === editingSectionId);
+    if (target?.id && activeConfId) {
+      void updateSection(activeConfId, target.id, { name: target.name, description: sectionDescDraft }).catch(() => {});
+    }
     setSections(sections.map((s) => (s.id === editingSectionId ? { ...s, description: sectionDescDraft } : s)));
     setEditingSectionId(null);
     setSectionDescDraft('');
+  };
+
+  const removeSection = async (sectionId) => {
+    if (!sectionId || !activeConfId) return;
+    setSectionError('');
+    try {
+      await deleteSection(activeConfId, sectionId);
+      setSections(sections.filter((x) => x.id !== sectionId));
+    } catch (e) {
+      setSectionError(e?.message || 'Не удалось удалить секцию.');
+    }
   };
 
   const chairmanBySectionId = useMemo(() => {
@@ -42,6 +89,8 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
     return map;
   }, [users]);
 
+  const canToggleProgram = (status) => ['accepted_oral', 'accepted_poster', 'needs_revision', 'revision_submitted'].includes(String(status || ''));
+
   return (
     <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-8 animate-in zoom-in-95">
       <div className="space-y-4">
@@ -50,14 +99,15 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
         </h2>
         <div className="flex gap-2">
           <input value={newSecName} onChange={(e) => setNewSecName(e.target.value)} className="flex-1 border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Название новой секции..." />
-          <button onClick={addSection} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all hover:bg-indigo-700">
+          <button onClick={addSection} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all hover:bg-indigo-700" type="button">
             <Plus className="w-4 h-4" /> Добавить
           </button>
         </div>
+        {sectionError && <p className="text-sm text-red-600 font-semibold">{sectionError}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           {sections.map((s) => {
-            const chairmanName = chairmanBySectionId.get(s.id) || '—';
+            const chairmanName = s?.chairName || chairmanBySectionId.get(s.id) || '—';
             const isEditing = editingSectionId === s.id;
 
             return (
@@ -76,7 +126,7 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setSections(sections.filter((x) => x.id !== s.id))} className="text-slate-300 hover:text-red-500 p-2 bg-white rounded-xl border border-slate-200" type="button">
+                    <button onClick={() => void removeSection(s.id)} className="text-slate-300 hover:text-red-500 p-2 bg-white rounded-xl border border-slate-200" type="button">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -119,27 +169,43 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                 <div className="flex flex-wrap items-center gap-3 mb-1">
                   <StatusBadge status={sub.status} />
                   <p className="text-sm font-bold text-slate-800 truncate max-w-[520px]">{sub.theme}</p>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Версия {sub.revisionCount}</span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{getAuthorsString(sub)}</p>
                 <div className="flex flex-wrap gap-2 mt-3">
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать работу: ${sub.fileName}`}
+                    title={`Скачать работу`}
                     type="button"
+                    onClick={() => download(sub.id, 'article')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:article`])}
                   >
                     <FileDown className="w-4 h-4" /> <span className="text-xs font-bold">Работа</span>
                   </button>
                   <button
                     className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-600 px-3 py-2 bg-white hover:bg-indigo-50 rounded-xl transition-colors border border-slate-200"
-                    title={`Скачать тезисы: ${sub.thesisFileName || 'thesis.pdf'}`}
+                    title={`Скачать тезис`}
                     type="button"
+                    onClick={() => download(sub.id, 'abstract')}
+                    disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
                   >
-                    <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезисы</span>
+                    <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезис</span>
                   </button>
                 </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-end flex-shrink-0">
+                <select
+                  value={sub.reviewerId || ''}
+                  onChange={(e) => updateSubmission(sub.id, { reviewerId: e.target.value || null })}
+                  className="text-xs font-bold bg-white border border-slate-200 shadow-sm rounded-lg px-3 py-2 outline-none"
+                  title="Назначить рецензента"
+                >
+                  <option value="">Рецензент…</option>
+                  {(reviewers || []).map((r) => (
+                    <option key={r.user_id} value={r.user_id}>{r.name}</option>
+                  ))}
+                </select>
                 <select
                   value={sub.sectionId}
                   onChange={(e) => updateSubmission(sub.id, { sectionId: e.target.value })}
@@ -147,6 +213,19 @@ export default function AdminSubmissionsView({ activeConfId, sections, setSectio
                 >
                   {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                {canToggleProgram(sub.status) && (
+                  <button
+                    type="button"
+                    onClick={() => updateSubmission(sub.id, { isInProgram: !Boolean(sub.isInProgram) })}
+                    className={`text-xs font-bold border shadow-sm rounded-lg px-3 py-2 outline-none ${
+                      sub.isInProgram
+                        ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {sub.isInProgram ? 'Убрать из программы' : 'Добавить в программу'}
+                  </button>
+                )}
                 <button
                   onClick={() => setDetailsId(sub.id)}
                   className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-shadow shadow-md whitespace-nowrap"

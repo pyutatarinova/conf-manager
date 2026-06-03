@@ -1,33 +1,52 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { FileDown, FileText } from 'lucide-react';
 
 import ConfirmModal from '../components/ui/ConfirmModal';
 import StatusBadge from '../components/ui/StatusBadge';
 import SubmissionDetailsModal from '../components/ui/SubmissionDetailsModal';
 import { getAuthorsString } from '../utils/helpers';
+import { downloadSubmissionFileDirect } from '../api/submissions';
+import { updateSection } from '../api/conferences';
+import { triggerBrowserDownload } from '../utils/download';
 
-export default function ChairmanView({ submissions, updateSubmission, sections, setSections, users, chairmanId }) {
+export default function ChairmanView({ activeConfId, submissions, updateSubmission, sections, setSections, users, chairmanId, reviewers = [] }) {
   const chairman = useMemo(() => (users || []).find((u) => u.id === chairmanId) || null, [users, chairmanId]);
-  const mySectionId = chairman?.sectionId || '';
+  const mySectionId = useMemo(() => {
+    const byChair = (sections || []).find((s) => s.chairId && s.chairId === chairmanId)?.id;
+    if (byChair) return byChair;
+    const uniqueSectionIds = [...new Set((submissions || []).map((s) => s.sectionId).filter(Boolean))];
+    return uniqueSectionIds.length === 1 ? uniqueSectionIds[0] : (uniqueSectionIds[0] || '');
+  }, [submissions, sections, chairmanId]);
   const mySection = useMemo(() => (sections || []).find((s) => s.id === mySectionId) || null, [sections, mySectionId]);
 
   const [desc, setDesc] = useState(mySection?.description || '');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [detailsId, setDetailsId] = useState(null);
+  const [downloadBusy, setDownloadBusy] = useState({});
 
   useEffect(() => {
     setDesc(mySection?.description || '');
   }, [mySection]);
 
-  const mySubmissions = useMemo(
-    () => (submissions || []).filter((s) => s.sectionId === mySectionId),
-    [submissions, mySectionId]
-  );
+  const mySubmissions = useMemo(() => submissions || [], [submissions]);
+  const canToggleProgram = (status) => ['accepted_oral', 'accepted_poster', 'needs_revision', 'revision_submitted'].includes(String(status || ''));
 
   const detailsSubmission = useMemo(
     () => mySubmissions.find((s) => s.id === detailsId) || null,
     [mySubmissions, detailsId]
   );
+
+  const download = async (submissionId, fileType) => {
+    if (!submissionId) return;
+    const key = `${submissionId}:${fileType}`;
+    setDownloadBusy((prev) => ({ ...prev, [key]: true }));
+    try {
+      const { blob, filename } = await downloadSubmissionFileDirect(submissionId, fileType);
+      triggerBrowserDownload(blob, filename);
+    } finally {
+      setDownloadBusy((prev) => ({ ...prev, [key]: false }));
+    }
+  };
 
   if (!mySection) {
     return (
@@ -40,7 +59,19 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
   }
 
   const confirmSave = () => {
-    setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+    if (!activeConfId || !mySectionId) {
+      setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      return;
+    }
+
+    void updateSection(activeConfId, mySectionId, { name: mySection.name, description: desc })
+      .then(() => {
+        setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      })
+      .catch(() => {
+        // keep local update even if request fails
+        setSections(sections.map((s) => (s.id === mySectionId ? { ...s, description: desc } : s)));
+      });
   };
 
   return (
@@ -48,7 +79,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Секция: {mySection.name}</h1>
-          <p className="text-sm text-slate-500 font-medium">Председатель секции: {chairman?.name || '—'}</p>
+          <p className="text-sm text-slate-500 font-medium">Председатель секции: {chairman?.name || mySection?.chairName || '—'}</p>
         </div>
         <div className="flex gap-4">
           <div className="text-center">
@@ -89,7 +120,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
         onClose={() => setIsConfirmOpen(false)}
         onConfirm={confirmSave}
         title="Сохранить изменения?"
-        message="Вы уверены, что хотите обновить публичное описание секции?"
+        message="Вы уверены, что хотите обновить описание секции?"
       />
 
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
@@ -100,6 +131,7 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                 <th className="p-6">Название доклада</th>
                 <th className="p-6">Рецензент</th>
                 <th className="p-6">Статус</th>
+                <th className="p-6">Программа</th>
                 <th className="p-6 text-right">Детали</th>
               </tr>
             </thead>
@@ -107,26 +139,28 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
               {mySubmissions.map((sub) => (
                 <tr key={sub.id} className="hover:bg-slate-50/30 transition-colors">
                   <td className="p-6">
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <p className="font-bold text-slate-800 leading-tight break-words max-w-xs">{sub.theme}</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
-                          title={`Скачать работу: ${sub.fileName}`}
-                          type="button"
-                        >
-                          <FileDown className="w-4 h-4" /> <span className="text-xs font-bold">Работа</span>
-                        </button>
-                        <button
-                          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
-                          title={`Скачать тезисы: ${sub.thesisFileName || 'thesis.pdf'}`}
-                          type="button"
-                        >
-                          <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезисы</span>
-                        </button>
-                      </div>
-                    </div>
+                    <p className="font-bold text-slate-800 leading-tight break-words mb-2">{sub.theme}</p>
                     <p className="text-xs text-slate-500 font-medium">{getAuthorsString(sub)}</p>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
+                        title={`Скачать работу`}
+                        type="button"
+                        onClick={() => download(sub.id, 'article')}
+                        disabled={Boolean(downloadBusy[`${sub.id}:article`])}
+                      >
+                        <FileDown className="w-4 h-4" /> <span className="text-xs font-bold">Работа</span>
+                      </button>
+                      <button
+                        className="inline-flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-2 py-1.5 bg-white shadow-sm hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0 border border-slate-200"
+                        title={`Скачать тезис`}
+                        type="button"
+                        onClick={() => download(sub.id, 'abstract')}
+                        disabled={Boolean(downloadBusy[`${sub.id}:abstract`])}
+                      >
+                        <FileText className="w-4 h-4" /> <span className="text-xs font-bold">Тезис</span>
+                      </button>
+                    </div>
                   </td>
                   <td className="p-6">
                     <select
@@ -137,13 +171,32 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
                       title={sub.chairmanLocked ? 'Решение председателя зафиксировано: назначение рецензента недоступно.' : ''}
                     >
                       <option value="">Назначить...</option>
-                      {(users || []).filter((u) => u.role === 'reviewer').map((r) => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
+                      {(reviewers || []).map((r) => (
+                        <option key={r.user_id} value={r.user_id}>{r.name}</option>
                       ))}
                     </select>
                   </td>
                   <td className="p-6">
-                    <StatusBadge status={sub.status} />
+                    <div className="space-y-2">
+                      <StatusBadge status={sub.status} />
+                      <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Версия {sub.revisionCount}</span>
+                    </div>
+                  </td>
+                  <td className="p-6">
+                    {canToggleProgram(sub.status) && (
+                      <button
+                        type="button"
+                        onClick={() => updateSubmission(sub.id, { isInProgram: !Boolean(sub.isInProgram) })}
+                        className={`text-xs font-bold border shadow-sm rounded-lg px-3 py-2 outline-none ${
+                          sub.isInProgram
+                            ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {sub.isInProgram ? 'Убрать из программы' : 'Добавить в программу'}
+                      </button>
+                    )}
+                    {!canToggleProgram(sub.status) && <span className="text-xs text-slate-300">—</span>}
                   </td>
                   <td className="p-6 text-right">
                     <button
@@ -177,4 +230,5 @@ export default function ChairmanView({ submissions, updateSubmission, sections, 
     </div>
   );
 }
+
 

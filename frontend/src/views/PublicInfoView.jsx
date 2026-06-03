@@ -29,7 +29,7 @@ export default function PublicInfoView({ conference, sections, users }) {
           </h3>
           <div className="grid grid-cols-1 gap-4">
             {sections.map((sec) => {
-              const chairmanName = (users || []).find((u) => u.role === 'chairman' && u.sectionId === sec.id)?.name || '—';
+              const chairmanName = sec?.chairName || (users || []).find((u) => u.role === 'chairman' && u.sectionId === sec.id)?.name || '—';
 
               return (
                 <div
